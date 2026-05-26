@@ -1,5 +1,5 @@
 import { refreshAccessToken } from "@/lib/api/authSession";
-import { getApiBase } from "@/lib/api/base";
+import { apiUrl, buildApiUrl, getApiBase } from "@/lib/api/base";
 import { getAccessToken, getRefreshToken } from "@/lib/auth/token";
 import type { AuthUser, LoginResponse, PublicUser } from "@/types/auth";
 import type { Brand, Product, Warehouse } from "@/types/master";
@@ -64,7 +64,7 @@ export async function apiClient<T>(
 ): Promise<T> {
   const { params, headers, token, skipAuth, _retry, ...init } = options;
 
-  const url = new URL(`${getApiBase()}${path}`);
+  const url = buildApiUrl(path);
   if (params) {
     Object.entries(params).forEach(([key, value]) =>
       url.searchParams.set(key, value)
@@ -128,17 +128,31 @@ export const api = {
 
   auth: {
     login: async (email: string, password: string) => {
-      const response = await fetch(`${getApiBase()}/auth/login`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
+      let response: Response;
+      try {
+        response = await fetch(apiUrl("/auth/login"), {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+      } catch {
+        throw new ApiError(
+          "Cannot reach server. Start the API (npm run dev) and use your computer's IP on mobile, not localhost.",
+          0,
+          "NETWORK_ERROR"
+        );
+      }
       const body = await parseJsonResponse<LoginResponse>(response);
       if (!response.ok || !body.success || !body.data) {
         throw new ApiError(body.message ?? "Login failed", response.status, body.code);
       }
-      return body.data;
+      const data = body.data;
+      return {
+        ...data,
+        accessToken: data.accessToken ?? data.token,
+        token: data.token ?? data.accessToken,
+      };
     },
     refresh: () =>
       apiClient<LoginResponse>("/auth/refresh", {
@@ -387,7 +401,7 @@ export const api = {
         "sales-invoice": "/reports/sales/by-invoice",
         "sales-brand": "/reports/sales/by-brand",
       };
-      const url = new URL(`${getApiBase()}${paths[type]}`);
+      const url = buildApiUrl(paths[type]);
       url.searchParams.set("format", "csv");
       if (filters?.warehouseId) url.searchParams.set("warehouseId", filters.warehouseId);
       if (filters?.brandId) url.searchParams.set("brandId", filters.brandId);
@@ -430,7 +444,7 @@ export const api = {
       const token = getAccessToken();
       let response: Response;
       try {
-        response = await fetch(`${getApiBase()}/imports/tally`, {
+        response = await fetch(apiUrl("/imports/tally"), {
           method: "POST",
           credentials: "include",
           headers: token ? { Authorization: `Bearer ${token}` } : {},

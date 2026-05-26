@@ -98,7 +98,11 @@ export function DashboardShell({
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-zinc-900">{user?.name}</p>
             <p className="truncate text-xs text-zinc-500">
-              {user?.warehouse?.name ?? user?.role?.replace("_", " ") ?? "User"}
+              {user?.warehouse?.name ??
+                (user?.role === "ADMIN"
+                  ? "Administrator"
+                  : user?.role?.replace("_", " ")) ??
+                "Signed in"}
             </p>
           </div>
         </div>

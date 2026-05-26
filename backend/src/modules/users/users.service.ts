@@ -100,17 +100,31 @@ export async function createUser(input: CreateUserInput, createdBy: AuthUser) {
   validatePasswordStrength(input.password);
 
   let permissions: PermissionGrant[] = [];
+  let warehouseId: string | undefined;
+
   if (input.role === UserRole.WAREHOUSE_USER) {
     if (input.permissions.length > 0) {
       permissions = normalizePermissionGrants(
         input.permissions as PermissionGrant[]
       );
+      const hasScoped = permissions.some((p) => p.warehouseId);
+      if (!hasScoped) {
+        if (input.warehouseId) {
+          permissions = defaultWarehouseOperatorPermissions(input.warehouseId);
+        } else {
+          throw new BadRequestError(
+            "Staff users need warehouse permissions (e.g. Stock in/out). Use the Full warehouse operator preset."
+          );
+        }
+      }
     } else if (input.warehouseId) {
       permissions = defaultWarehouseOperatorPermissions(input.warehouseId);
     } else {
-      throw new BadRequestError("Assign permissions or a default warehouse");
+      throw new BadRequestError("Select a home warehouse or assign module permissions");
     }
     await validatePermissionWarehouses(permissions);
+    warehouseId =
+      input.warehouseId ?? permissions.find((p) => p.warehouseId)?.warehouseId;
   }
 
   const user = await User.create({
@@ -119,8 +133,8 @@ export async function createUser(input: CreateUserInput, createdBy: AuthUser) {
     passwordHash: await hashPassword(input.password),
     role: input.role,
     warehouseId:
-      input.role === UserRole.WAREHOUSE_USER && input.warehouseId
-        ? input.warehouseId
+      input.role === UserRole.WAREHOUSE_USER && warehouseId
+        ? warehouseId
         : undefined,
     permissions: permissions.map((p) => ({
       code: p.code,
@@ -192,11 +206,21 @@ export async function updateUser(
     if (normalized.length === 0) {
       throw new BadRequestError("Assign at least one module permission");
     }
+    const hasScoped = normalized.some((p) => p.warehouseId);
+    if (!hasScoped) {
+      throw new BadRequestError(
+        "Include at least one warehouse permission (Stock, Inventory, or Transfers)"
+      );
+    }
     await validatePermissionWarehouses(normalized);
     user.permissions = normalized.map((p) => ({
       code: p.code,
       warehouseId: p.warehouseId ? new Types.ObjectId(p.warehouseId) : undefined,
     }));
+    if (!user.warehouseId) {
+      const wh = normalized.find((p) => p.warehouseId)?.warehouseId;
+      if (wh) user.warehouseId = new Types.ObjectId(wh);
+    }
   }
 
   if (input.isActive !== undefined) user.isActive = input.isActive;

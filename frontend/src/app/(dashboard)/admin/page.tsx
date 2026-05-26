@@ -49,26 +49,34 @@ function StatIcons() {
 }
 
 export default function AdminDashboardPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const icons = StatIcons();
   const [data, setData] = useState<AdminDashboard | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
+    if (authLoading) return;
+
     setLoading(true);
     setError("");
     try {
       setData(await api.inventory.dashboard());
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load dashboard");
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Failed to load dashboard";
+      setError(message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [authLoading]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   return (

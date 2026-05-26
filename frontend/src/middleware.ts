@@ -69,9 +69,11 @@ export async function middleware(request: NextRequest) {
 
     const payload = await verifyToken(token);
     if (!payload?.role) {
-      const response = NextResponse.redirect(
-        new URL(AUTH_ROUTES.login, request.url)
-      );
+      const loginUrl = new URL(AUTH_ROUTES.login, request.url);
+      if (!process.env.JWT_SECRET) {
+        loginUrl.searchParams.set("error", "config");
+      }
+      const response = NextResponse.redirect(loginUrl);
       response.cookies.delete(ACCESS_TOKEN_COOKIE);
       return response;
     }
@@ -102,7 +104,13 @@ export async function middleware(request: NextRequest) {
     const payload = await verifyToken(token);
     if (payload?.role) {
       const permissions = decodePermissionsFromJwt(payload.permissions ?? []);
-      const dest = getDefaultAppPath(payload.role, permissions);
+      const redirectParam = request.nextUrl.searchParams.get("redirect");
+      const dest =
+        redirectParam &&
+        redirectParam.startsWith("/") &&
+        !redirectParam.startsWith("//")
+          ? redirectParam
+          : getDefaultAppPath(payload.role, permissions);
       return NextResponse.redirect(new URL(dest, request.url));
     }
   }

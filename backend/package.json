@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "lint": "eslint src --ext .ts",
     "seed": "tsx src/scripts/seed.ts",
+    "reset-admin": "tsx src/scripts/reset-admin-password.ts",
     "db:check": "tsx src/scripts/check-db.ts"
   },
   "dependencies": {

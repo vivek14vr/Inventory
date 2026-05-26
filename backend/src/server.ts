@@ -7,8 +7,10 @@ async function bootstrap() {
   await connectDatabase();
 
   const app = createApp();
-  const server = app.listen(env.PORT, () => {
-    console.log(`API running at http://localhost:${env.PORT}${env.API_PREFIX}`);
+  const server = app.listen(env.PORT, "0.0.0.0", () => {
+    console.log(
+      `API running at http://localhost:${env.PORT}${env.API_PREFIX} (LAN: use your machine IP on port ${env.PORT})`
+    );
   });
 
   const shutdown = async (signal: string) => {

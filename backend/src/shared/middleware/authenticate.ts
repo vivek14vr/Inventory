@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { User } from "../../models/User.js";
+import { Warehouse } from "../../models/Warehouse.js";
 import { UnauthorizedError } from "../errors/AppError.js";
 import { defaultWarehouseOperatorPermissions } from "../constants/permissions.js";
 import { UserRole } from "../constants/roles.js";
@@ -18,7 +19,7 @@ export async function buildAuthUser(userId: string): Promise<AuthUser | null> {
 
   if (!user || !user.isActive) return null;
 
-  const warehouse = user.warehouseId as
+  let warehouse = user.warehouseId as
     | { _id: string; name: string; code: string }
     | null
     | undefined;
@@ -39,6 +40,16 @@ export async function buildAuthUser(userId: string): Promise<AuthUser | null> {
         warehouseId: p.warehouseId,
       })
     );
+  }
+
+  if (!warehouse) {
+    const scopedWarehouseId = permissions.find((p) => p.warehouseId)?.warehouseId;
+    if (scopedWarehouseId) {
+      const wh = await Warehouse.findById(scopedWarehouseId).select("name code").lean();
+      if (wh) {
+        warehouse = { _id: String(wh._id), name: wh.name, code: wh.code };
+      }
+    }
   }
 
   return {

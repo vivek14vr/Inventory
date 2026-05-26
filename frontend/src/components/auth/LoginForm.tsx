@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ApiError } from "@/lib/api/client";
 
 function FieldIcon({ children }: { children: React.ReactNode }) {
   return (
-    <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400">
+    <span className="pointer-events-none absolute left-4 top-1/2 z-[1] -translate-y-1/2 text-zinc-400">
       {children}
     </span>
   );
@@ -36,7 +36,7 @@ function LockIcon() {
 function EyeIcon({ open }: { open: boolean }) {
   if (open) {
     return (
-      <svg viewBox="0 0 20 20" fill="currentColor" className="h-[18px] w-[18px]" aria-hidden>
+      <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5" aria-hidden>
         <path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" />
         <path
           fillRule="evenodd"
@@ -47,7 +47,7 @@ function EyeIcon({ open }: { open: boolean }) {
     );
   }
   return (
-    <svg viewBox="0 0 20 20" fill="currentColor" className="h-[18px] w-[18px]" aria-hidden>
+    <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5" aria-hidden>
       <path
         fillRule="evenodd"
         d="M3.28 2.22a.75.75 0 00-1.06 1.06l14.5 14.5a.75.75 0 101.06-1.06l-1.135-1.135C17.3 14.13 18.55 12.21 19.017 10.012a1 1 0 00-1.966-.392C16.83 11.09 14.19 13.5 10 13.5c-1.12 0-2.166-.27-3.1-.75l-1.62-1.62zM6.1 8.35A4.5 4.5 0 0110 5.5c.92 0 1.78.28 2.49.75l-1.15 1.15A3 3 0 0010 8.5c-.55 0-1.07-.15-1.52-.41L6.1 8.35z"
@@ -57,9 +57,8 @@ function EyeIcon({ open }: { open: boolean }) {
   );
 }
 
-/** text-base (16px) avoids iOS Safari zoom-on-focus, which can break the layout on mobile */
 const inputClass =
-  "login-input w-full rounded-xl border border-zinc-200/90 bg-white py-3.5 pl-12 pr-4 text-base text-zinc-900 shadow-sm shadow-zinc-900/[0.03] placeholder:text-zinc-400";
+  "login-input relative z-[1] w-full rounded-xl border border-zinc-200/90 bg-white py-3.5 pl-12 pr-14 text-base text-zinc-900 shadow-sm shadow-zinc-900/[0.03] placeholder:text-zinc-400";
 
 export function LoginForm() {
   const { login } = useAuth();
@@ -68,57 +67,80 @@ export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [jsReady, setJsReady] = useState(false);
+  const [jsTimeout, setJsTimeout] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  useEffect(() => {
+    setJsReady(true);
+    const timer = window.setTimeout(() => setJsTimeout(true), 8000);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const handleLogin = useCallback(async () => {
+    if (submitting) return;
+
     setError("");
-    setSubmitting(true);
     const trimmedEmail = email.trim();
-    const trimmedPassword = password.trim();
+    const trimmedPassword = password;
+
     if (!trimmedEmail || !trimmedPassword) {
       setError("Please enter your email and password.");
-      setSubmitting(false);
       return;
     }
+
+    setSubmitting(true);
     try {
       await login(trimmedEmail, trimmedPassword);
     } catch (err) {
       let message = "Login failed. Please try again.";
       if (err instanceof ApiError) {
         message = err.message;
-        if (err.code === "NETWORK_ERROR" && typeof window !== "undefined") {
-          const host = window.location.hostname;
-          if (host !== "localhost" && host !== "127.0.0.1") {
-            message +=
-              " On mobile, set NEXT_PUBLIC_API_URL in frontend/.env.local to your computer's LAN address (e.g. http://192.168.1.10:4000/api/v1), then restart the dev server.";
-          }
+        if (err.code === "NETWORK_ERROR") {
+          message +=
+            " Ensure the dev server is running and you opened this app using your computer's IP (e.g. http://192.168.1.10:3000), not localhost.";
         }
+      } else if (err instanceof Error && err.message) {
+        message = err.message;
       }
       setError(message);
-    } finally {
       setSubmitting(false);
     }
+  }, [email, password, login, submitting]);
+
+  if (!jsReady) {
+    return (
+      <div className="space-y-6 animate-pulse" aria-hidden>
+        <div className="h-12 rounded-xl bg-zinc-100" />
+        <div className="h-12 rounded-xl bg-zinc-100" />
+        <div className="h-12 rounded-xl bg-emerald-100" />
+      </div>
+    );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form
+      className="relative z-10 space-y-6"
+      noValidate
+      onSubmit={(e) => {
+        e.preventDefault();
+        void handleLogin();
+      }}
+    >
+      {jsTimeout && !error && (
+        <p className="text-center text-xs text-zinc-500">
+          If buttons do not respond, restart the dev server after pulling the latest
+          changes (mobile needs LAN access to JavaScript bundles).
+        </p>
+      )}
+
       {error && (
         <div
           role="alert"
           className="flex items-start gap-3 rounded-xl border border-red-100 bg-red-50/90 px-4 py-3.5 text-sm text-red-800"
         >
-          <svg
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            className="mt-0.5 h-5 w-5 shrink-0 text-red-500"
-            aria-hidden
-          >
-            <path
-              fillRule="evenodd"
-              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a.75.75 0 00-.75.75v4.5a.75.75 0 001.5 0v-4.5A.75.75 0 0010 7zm0 8a1 1 0 100-2 1 1 0 000 2z"
-              clipRule="evenodd"
-            />
-          </svg>
+          <span className="mt-0.5 shrink-0 text-red-500" aria-hidden>
+            !
+          </span>
           <span>{error}</span>
         </div>
       )}
@@ -134,11 +156,16 @@ export function LoginForm() {
             </FieldIcon>
             <input
               id="email"
+              name="email"
               type="email"
-              required
-              autoComplete="email"
+              inputMode="email"
+              autoComplete="username email"
+              autoCapitalize="none"
+              autoCorrect="off"
+              enterKeyHint="next"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              disabled={submitting}
               className={inputClass}
               placeholder="you@company.com"
             />
@@ -155,18 +182,24 @@ export function LoginForm() {
             </FieldIcon>
             <input
               id="password"
+              name="password"
               type={showPassword ? "text" : "password"}
-              required
               autoComplete="current-password"
+              enterKeyHint="go"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className={`${inputClass} pr-12`}
+              disabled={submitting}
+              className={inputClass}
               placeholder="Enter your password"
             />
             <button
               type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              className="absolute right-3.5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setShowPassword((v) => !v);
+              }}
+              className="absolute right-1 top-1/2 z-20 flex h-11 w-11 -translate-y-1/2 touch-manipulation items-center justify-center rounded-lg text-zinc-500 active:bg-zinc-100"
               aria-label={showPassword ? "Hide password" : "Show password"}
             >
               <EyeIcon open={showPassword} />
@@ -178,7 +211,7 @@ export function LoginForm() {
       <button
         type="submit"
         disabled={submitting}
-        className="login-submit flex min-h-12 w-full touch-manipulation items-center justify-center gap-2.5 rounded-xl bg-emerald-700 px-4 py-3.5 text-base font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+        className="login-submit relative z-10 flex min-h-[3rem] w-full cursor-pointer touch-manipulation items-center justify-center gap-2.5 rounded-xl bg-emerald-700 px-4 py-3.5 text-base font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
       >
         {submitting && (
           <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />

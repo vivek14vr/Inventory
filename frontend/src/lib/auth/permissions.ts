@@ -71,6 +71,28 @@ export function isAdminRole(role: string): boolean {
   return role === "ADMIN";
 }
 
+/** Default staff bundle for a single warehouse (matches backend seed defaults). */
+export function defaultWarehouseOperatorPermissions(
+  warehouseId: string
+): PermissionGrant[] {
+  return [
+    { code: Permission.DASHBOARD_VIEW },
+    { code: Permission.STOCK_VIEW, warehouseId },
+    { code: Permission.STOCK_IN, warehouseId },
+    { code: Permission.STOCK_OUT, warehouseId },
+    { code: Permission.TRANSFERS_VIEW, warehouseId },
+    { code: Permission.TRANSFERS_RECEIVE, warehouseId },
+  ];
+}
+
+export function hasWarehouseScopedPermission(
+  permissions: PermissionGrant[] | undefined
+): boolean {
+  return (permissions ?? []).some(
+    (p) => isWarehouseScopedPermission(p.code) && p.warehouseId
+  );
+}
+
 export function hasPermission(
   role: string,
   permissions: PermissionGrant[] | undefined,

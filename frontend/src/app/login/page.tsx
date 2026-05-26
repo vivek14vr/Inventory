@@ -1,8 +1,7 @@
-import { Suspense } from "react";
 import { BrandLogo } from "@/components/auth/BrandLogo";
 import { LoginBrandPanel } from "@/components/auth/LoginBrandPanel";
-import { LoginForm } from "@/components/auth/LoginForm";
-import { LoginFormSkeleton } from "@/components/auth/LoginFormSkeleton";
+import { LoginConfigBanner } from "@/components/auth/LoginConfigBanner";
+import { LoginFormClient } from "@/components/auth/LoginFormClient";
 
 export default function LoginPage() {
   return (
@@ -25,7 +24,7 @@ export default function LoginPage() {
           aria-hidden
         />
 
-        <div className="relative flex flex-1 flex-col px-6 py-8 sm:px-12 lg:px-16 xl:px-20">
+        <div className="relative z-10 flex flex-1 flex-col px-6 py-8 sm:px-12 lg:px-16 xl:px-20">
           <div className="flex flex-1 flex-col justify-center py-8">
             <div className="mx-auto w-full max-w-[420px]">
               <div className="mb-8 flex items-center gap-3 lg:hidden">
@@ -48,9 +47,9 @@ export default function LoginPage() {
                 </p>
               </div>
 
-              <Suspense fallback={<LoginFormSkeleton />}>
-                <LoginForm />
-              </Suspense>
+              <LoginConfigBanner />
+
+              <LoginFormClient />
 
               <p className="mt-8 text-center text-xs text-zinc-400">
                 Secure access for authorized SV Enterprises personnel only.

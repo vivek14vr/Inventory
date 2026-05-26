@@ -15,7 +15,22 @@ export function createApp() {
   app.use(helmet());
   app.use(
     cors({
-      origin: env.CORS_ORIGIN,
+      origin(origin, callback) {
+        if (!origin) {
+          callback(null, true);
+          return;
+        }
+        if (env.NODE_ENV === "development") {
+          const allowed =
+            origin === env.CORS_ORIGIN ||
+            /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
+            /^https?:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(origin) ||
+            /^https?:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(origin);
+          callback(null, allowed);
+          return;
+        }
+        callback(null, origin === env.CORS_ORIGIN);
+      },
       credentials: true,
     })
   );

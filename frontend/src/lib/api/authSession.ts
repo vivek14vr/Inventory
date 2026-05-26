@@ -1,4 +1,4 @@
-import { getApiBase } from "@/lib/api/base";
+import { apiUrl } from "@/lib/api/base";
 import type { ApiResponse } from "@/lib/api/client";
 import {
   clearAuthTokens,
@@ -25,7 +25,7 @@ export async function refreshAccessToken(): Promise<string | null> {
   refreshInFlight = (async () => {
     const storedRefresh = getRefreshToken();
     try {
-      const response = await fetch(`${getApiBase()}/auth/refresh`, {
+      const response = await fetch(apiUrl("/auth/refresh"), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -34,7 +34,9 @@ export async function refreshAccessToken(): Promise<string | null> {
 
       const body = (await response.json()) as ApiResponse<TokenRefreshResponse>;
       if (!response.ok || !body.success || !body.data) {
-        clearAuthTokens();
+        if (response.status === 401 || response.status === 403) {
+          clearAuthTokens();
+        }
         return null;
       }
 
@@ -46,7 +48,6 @@ export async function refreshAccessToken(): Promise<string | null> {
       });
       return body.data.accessToken;
     } catch {
-      clearAuthTokens();
       return null;
     } finally {
       refreshInFlight = null;

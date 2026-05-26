@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api/client";
-import type { PermissionGrant } from "@/lib/auth/permissions";
+import {
+  defaultWarehouseOperatorPermissions,
+  hasWarehouseScopedPermission,
+  type PermissionGrant,
+} from "@/lib/auth/permissions";
 import { PermissionEditor } from "@/components/users/PermissionEditor";
 import type { PublicUser } from "@/types/auth";
 
@@ -49,10 +53,33 @@ export default function AdminUsersPage() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (!showForm || form.role !== "WAREHOUSE_USER" || warehouses.length === 0) return;
+    if (form.warehouseId && form.permissions.length > 0) return;
+    const wh = warehouses[0].id;
+    setForm((f) => ({
+      ...f,
+      warehouseId: wh,
+      permissions: defaultWarehouseOperatorPermissions(wh),
+    }));
+  }, [showForm, form.role, form.warehouseId, form.permissions.length, warehouses]);
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     setError("");
+
+    if (
+      form.role === "WAREHOUSE_USER" &&
+      !hasWarehouseScopedPermission(form.permissions)
+    ) {
+      setError(
+        'Choose a home warehouse and use "Full warehouse operator" or tick Stock/Inventory permissions for that warehouse.'
+      );
+      setSubmitting(false);
+      return;
+    }
+
     try {
       await api.users.create({
         name: form.name,
@@ -172,11 +199,44 @@ export default function AdminUsersPage() {
           </div>
 
           {form.role === "WAREHOUSE_USER" && (
-            <PermissionEditor
-              value={form.permissions}
-              onChange={(permissions) => setForm({ ...form, permissions })}
-              warehouses={warehouses}
-            />
+            <>
+              <div>
+                <label className="block text-sm font-medium text-zinc-700">
+                  Home warehouse
+                </label>
+                <select
+                  required
+                  value={form.warehouseId}
+                  onChange={(e) => {
+                    const warehouseId = e.target.value;
+                    setForm((f) => ({
+                      ...f,
+                      warehouseId,
+                      permissions: warehouseId
+                        ? defaultWarehouseOperatorPermissions(warehouseId)
+                        : [],
+                    }));
+                  }}
+                  className="mt-1 w-full max-w-md rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                >
+                  <option value="">Select warehouse…</option>
+                  {warehouses.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name} ({w.code})
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Used for the dashboard and default stock access. Password is stored once
+                  (bcrypt hashed on the server only).
+                </p>
+              </div>
+              <PermissionEditor
+                value={form.permissions}
+                onChange={(permissions) => setForm({ ...form, permissions })}
+                warehouses={warehouses}
+              />
+            </>
           )}
 
           <button
