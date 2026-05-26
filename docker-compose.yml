@@ -1,0 +1,35 @@
+services:
+  mongodb:
+    image: mongo:7
+    container_name: inventory-mongodb
+    restart: unless-stopped
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: inventory
+      MONGO_INITDB_ROOT_PASSWORD: inventory_local
+      MONGO_INITDB_DATABASE: inventory
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mongosh",
+          "-u",
+          "inventory",
+          "-p",
+          "inventory_local",
+          "--authenticationDatabase",
+          "admin",
+          "--eval",
+          "try { const s = rs.status(); if (s.ok !== 1) throw 0; } catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'localhost:27017'}]}); }",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 25s
+
+volumes:
+  mongodb_data:

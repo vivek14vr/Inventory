@@ -1,0 +1,202 @@
+import { Types } from "mongoose";
+import { Brand } from "../../models/Brand.js";
+import { Product } from "../../models/Product.js";
+import {
+  BadRequestError,
+  NotFoundError,
+} from "../../shared/errors/AppError.js";
+import {
+  buildPaginationMeta,
+  getPaginationParams,
+  mongoSort,
+} from "../../shared/pagination/pagination.js";
+import type {
+  CreateProductInput,
+  ListProductsQuery,
+  UpdateProductInput,
+} from "./products.validation.js";
+
+type ProductDoc = {
+  _id: Types.ObjectId;
+  name: string;
+  brandId: Types.ObjectId | { _id: Types.ObjectId; name: string; isActive: boolean };
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export function toPublicProduct(doc: ProductDoc) {
+  const brand = doc.brandId as { _id: Types.ObjectId; name: string; isActive: boolean };
+
+  return {
+    id: String(doc._id),
+    name: doc.name,
+    brandId: String(brand._id ?? doc.brandId),
+    brand: {
+      id: String(brand._id ?? doc.brandId),
+      name: brand.name,
+      isActive: brand.isActive,
+    },
+    isActive: doc.isActive,
+    createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt,
+  };
+}
+
+async function validateBrand(brandId: string): Promise<void> {
+  if (!Types.ObjectId.isValid(brandId)) {
+    throw new BadRequestError("Invalid brand ID");
+  }
+  const brand = await Brand.findOne({ _id: brandId, isActive: true });
+  if (!brand) {
+    throw new NotFoundError("Brand not found or inactive");
+  }
+}
+
+export async function listProducts(query: ListProductsQuery) {
+  const filter: Record<string, unknown> = {};
+  if (!query.includeInactive) {
+    filter.isActive = true;
+  }
+  if (query.brandId) {
+    if (!Types.ObjectId.isValid(query.brandId)) {
+      throw new BadRequestError("Invalid brand ID");
+    }
+    filter.brandId = query.brandId;
+  }
+  if (query.search?.trim()) {
+    filter.name = { $regex: query.search.trim(), $options: "i" };
+  }
+
+  const { page, limit, skip, sortOrder } = getPaginationParams(query);
+  const sortField = mongoSort(
+    query.sortBy === "createdAt" ? "createdAt" : "name",
+    sortOrder
+  );
+
+  const [total, products] = await Promise.all([
+    Product.countDocuments(filter),
+    Product.find(filter)
+      .populate("brandId", "name isActive")
+      .sort(sortField)
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+  ]);
+
+  let items = products.map((p) => toPublicProduct(p as ProductDoc));
+
+  if (query.sortBy === "brand") {
+    items = [...items].sort((a, b) => {
+      const cmp = a.brand.name.localeCompare(b.brand.name);
+      return query.sortOrder === "asc" ? cmp : -cmp;
+    });
+  }
+
+  return {
+    items,
+    pagination: buildPaginationMeta(total, page, limit),
+  };
+}
+
+export async function getProductById(id: string) {
+  if (!Types.ObjectId.isValid(id)) {
+    throw new NotFoundError("Product not found");
+  }
+
+  const product = await Product.findById(id)
+    .populate("brandId", "name isActive")
+    .lean();
+
+  if (!product) {
+    throw new NotFoundError("Product not found");
+  }
+
+  return toPublicProduct(product as ProductDoc);
+}
+
+export async function createProduct(input: CreateProductInput) {
+  await validateBrand(input.brandId);
+
+  const existing = await Product.findOne({
+    brandId: input.brandId,
+    name: input.name,
+  });
+  if (existing) {
+    throw new BadRequestError(
+      "Product with this name already exists for the selected brand"
+    );
+  }
+
+  try {
+    const product = await Product.create({
+      name: input.name,
+      brandId: input.brandId,
+      isActive: input.isActive ?? true,
+    });
+
+    const populated = await Product.findById(product._id)
+      .populate("brandId", "name isActive")
+      .lean();
+
+    return toPublicProduct(populated as ProductDoc);
+  } catch (err: unknown) {
+    if ((err as { code?: number }).code === 11000) {
+      throw new BadRequestError(
+        "Product with this name already exists for the selected brand"
+      );
+    }
+    throw err;
+  }
+}
+
+export async function updateProduct(id: string, input: UpdateProductInput) {
+  if (!Types.ObjectId.isValid(id)) {
+    throw new NotFoundError("Product not found");
+  }
+
+  const product = await Product.findById(id);
+  if (!product) {
+    throw new NotFoundError("Product not found");
+  }
+
+  const nextBrandId = input.brandId ?? String(product.brandId);
+  if (input.brandId) {
+    await validateBrand(input.brandId);
+    product.brandId = new Types.ObjectId(input.brandId);
+  }
+
+  if (input.name) {
+    product.name = input.name;
+  }
+
+  if (input.isActive !== undefined) {
+    product.isActive = input.isActive;
+  }
+
+  const duplicate = await Product.findOne({
+    brandId: nextBrandId,
+    name: product.name,
+    _id: { $ne: id },
+  });
+  if (duplicate) {
+    throw new BadRequestError(
+      "Product with this name already exists for the selected brand"
+    );
+  }
+
+  try {
+    await product.save();
+    const populated = await Product.findById(product._id)
+      .populate("brandId", "name isActive")
+      .lean();
+    return toPublicProduct(populated as ProductDoc);
+  } catch (err: unknown) {
+    if ((err as { code?: number }).code === 11000) {
+      throw new BadRequestError(
+        "Product with this name already exists for the selected brand"
+      );
+    }
+    throw err;
+  }
+}

@@ -1,0 +1,25 @@
+"use client";
+
+import { useMemo } from "react";
+import { DashboardShell } from "@/components/layout/DashboardShell";
+import { buildAppNavGroups } from "@/components/layout/buildAppNav";
+import { useAuth } from "@/contexts/AuthContext";
+
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+
+  const navGroups = useMemo(
+    () => buildAppNavGroups(user?.role ?? "", user?.permissions),
+    [user]
+  );
+
+  return (
+    <DashboardShell
+      title="Inventory"
+      subtitle={user?.name ?? "Operations"}
+      navGroups={navGroups}
+    >
+      {children}
+    </DashboardShell>
+  );
+}
