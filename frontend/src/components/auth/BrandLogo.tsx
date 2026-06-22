@@ -4,9 +4,9 @@ type BrandLogoProps = {
 };
 
 const sizes = {
-  sm: "h-9 w-9 rounded-lg [&_svg]:h-4 [&_svg]:w-4",
-  md: "h-11 w-11 rounded-xl [&_svg]:h-5 [&_svg]:w-5",
-  lg: "h-14 w-14 rounded-2xl [&_svg]:h-7 [&_svg]:w-7",
+  sm: "h-10 w-10 rounded-xl [&_svg]:h-5 [&_svg]:w-5",
+  md: "h-12 w-12 rounded-xl [&_svg]:h-6 [&_svg]:w-6",
+  lg: "h-16 w-16 rounded-2xl [&_svg]:h-8 [&_svg]:w-8",
 };
 
 export function BrandLogo({ size = "md", variant = "dark" }: BrandLogoProps) {
@@ -15,15 +15,15 @@ export function BrandLogo({ size = "md", variant = "dark" }: BrandLogoProps) {
     <div
       className={`flex shrink-0 items-center justify-center shadow-sm ${sizes[size]} ${
         isLight
-          ? "bg-white/15 text-white ring-1 ring-white/25 backdrop-blur-sm"
-          : "bg-emerald-700 text-white shadow-emerald-900/20"
+          ? "bg-white/20 text-white ring-2 ring-white/30 backdrop-blur-sm"
+          : "bg-orange-600 text-white shadow-orange-900/20"
       }`}
     >
       <svg
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        strokeWidth="1.75"
+        strokeWidth="2"
         aria-hidden
       >
         <path

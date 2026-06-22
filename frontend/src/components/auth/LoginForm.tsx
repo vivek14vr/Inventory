@@ -112,7 +112,7 @@ export function LoginForm() {
       <div className="space-y-6 animate-pulse" aria-hidden>
         <div className="h-12 rounded-xl bg-zinc-100" />
         <div className="h-12 rounded-xl bg-zinc-100" />
-        <div className="h-12 rounded-xl bg-emerald-100" />
+        <div className="h-12 rounded-xl bg-orange-100" />
       </div>
     );
   }
@@ -211,7 +211,7 @@ export function LoginForm() {
       <button
         type="submit"
         disabled={submitting}
-        className="login-submit relative z-10 flex min-h-[3rem] w-full cursor-pointer touch-manipulation items-center justify-center gap-2.5 rounded-xl bg-emerald-700 px-4 py-3.5 text-base font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+        className="login-submit relative z-10 flex min-h-[3rem] w-full cursor-pointer touch-manipulation items-center justify-center gap-2.5 rounded-xl bg-orange-700 px-4 py-3.5 text-base font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
       >
         {submitting && (
           <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />

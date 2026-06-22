@@ -127,7 +127,7 @@ export default function AdminImportsPage() {
         <button
           type="submit"
           disabled={uploading || !file}
-          className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-60"
+          className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-medium text-white hover:bg-orange-800 disabled:opacity-60"
         >
           {uploading ? "Importing…" : "Upload & import"}
         </button>
@@ -162,7 +162,7 @@ export default function AdminImportsPage() {
                 </div>
                 <button
                   onClick={() => viewImport(imp.id)}
-                  className="text-emerald-700 hover:underline"
+                  className="text-orange-700 hover:underline"
                 >
                   View details
                 </button>
@@ -184,7 +184,7 @@ function ImportSummary({ importData }: { importData: TallyImport }) {
         {importData.importedBy.name}
       </p>
       <div className="mt-4 flex gap-4 text-sm">
-        <span className="text-emerald-700">Success: {importData.successCount}</span>
+        <span className="text-orange-700">Success: {importData.successCount}</span>
         <span className="text-red-700">Failed: {importData.failedCount}</span>
         <span className="text-amber-700">Skipped: {importData.skippedCount}</span>
         <span className="text-zinc-500">Total rows: {importData.totalRows}</span>
@@ -227,7 +227,7 @@ function ImportRowsTable({ rows }: { rows: TallyImportRow[] }) {
 
 function RowStatus({ status }: { status: TallyImportRow["status"] }) {
   const styles = {
-    SUCCESS: "text-emerald-700",
+    SUCCESS: "text-orange-700",
     FAILED: "text-red-700",
     SKIPPED: "text-amber-700",
   };

@@ -12,7 +12,7 @@ export default function LoginPage() {
 
       <main className="login-panel relative flex min-h-[100dvh] flex-1 flex-col">
         <div
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-emerald-50/80 via-white to-white"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-orange-50/80 via-white to-white"
           aria-hidden
         />
         <div
@@ -30,7 +30,7 @@ export default function LoginPage() {
               <div className="mb-8 flex items-center gap-3 lg:hidden">
                 <BrandLogo size="md" />
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-700">
                     SV Enterprises
                   </p>
                   <p className="text-sm text-zinc-500">Inventory Management</p>

@@ -92,7 +92,7 @@ export function Pagination({
                 aria-current={p === page ? "page" : undefined}
                 className={`min-w-[2.25rem] rounded-lg px-2 py-1.5 text-sm font-medium transition ${
                   p === page
-                    ? "bg-emerald-700 text-white shadow-sm"
+                    ? "bg-orange-700 text-white shadow-sm"
                     : "text-zinc-600 hover:bg-zinc-100"
                 }`}
               >

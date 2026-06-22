@@ -11,7 +11,7 @@ export function LoginFormSkeleton() {
           <div className="mt-2 h-12 w-full rounded-xl bg-zinc-100" />
         </div>
       </div>
-      <div className="h-12 w-full rounded-xl bg-emerald-100" />
+      <div className="h-12 w-full rounded-xl bg-orange-100" />
     </div>
   );
 }

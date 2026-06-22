@@ -107,10 +107,10 @@ export default function WarehouseDashboardPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Dashboard"
+        title={`Hello, ${user?.name?.split(" ")[0] ?? "there"}!`}
         description={warehouseLabel}
         actions={
-          <Button variant="secondary" onClick={() => void load()} loading={loading}>
+          <Button variant="secondary" size="lg" onClick={() => void load()} loading={loading}>
             Refresh
           </Button>
         }
@@ -154,27 +154,37 @@ export default function WarehouseDashboardPage() {
             )}
           </div>
 
-          <Panel title="Today's actions" description="Common warehouse tasks">
-            <div className="grid gap-4 sm:grid-cols-2">
+          <section>
+            <h2 className="mb-4 text-lg font-bold text-stone-800">What do you want to do?</h2>
+            <div className="grid gap-4 grid-cols-2 sm:grid-cols-3">
               {showStock && (
                 <>
                   <QuickActionCard
                     href={routes.stock}
-                    title="Stock operations"
-                    description="Stock in, sell, or transfer to another warehouse"
+                    title="Add / Sell Stock"
+                    description="Stock in or out"
+                    iconLabel="Stock"
+                    size="large"
+                    color="orange"
                   />
                   <QuickActionCard
                     href={routes.inventory}
-                    title="View inventory"
-                    description="Current balances at your warehouse"
+                    title="Check Stock"
+                    description="See your stock"
+                    iconLabel="Check Stock"
+                    size="large"
+                    color="sky"
                   />
                 </>
               )}
               {showTransfers && (
                 <QuickActionCard
                   href={routes.transfers}
-                  title="Pending transfers"
-                  description="Incoming transfers to receive"
+                  title="Receive Stock"
+                  description="Pending transfers"
+                  iconLabel="Transfers"
+                  size="large"
+                  color="amber"
                   badge={
                     pendingTransfers.length > 0
                       ? String(pendingTransfers.length)
@@ -183,7 +193,7 @@ export default function WarehouseDashboardPage() {
                 />
               )}
             </div>
-          </Panel>
+          </section>
 
           {showStock && balances.length > 0 && (
             <Panel title="Top stock" description="Highest quantities on hand">

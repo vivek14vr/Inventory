@@ -138,7 +138,7 @@ export default function AdminProductsPage() {
             setShowForm(!showForm);
             setForm(emptyForm);
           }}
-          className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+          className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-medium text-white hover:bg-orange-800"
         >
           {showForm ? "Cancel" : "Add product"}
         </button>
@@ -184,7 +184,7 @@ export default function AdminProductsPage() {
           <button
             type="submit"
             disabled={submitting || brands.length === 0}
-            className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+            className="rounded-lg bg-orange-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
           >
             {submitting ? "Saving…" : "Save"}
           </button>

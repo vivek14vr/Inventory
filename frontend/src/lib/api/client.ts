@@ -18,6 +18,7 @@ import type {
   PendingTransfer,
   StockMovement,
   TransferRecord,
+  TransferActivityReport,
 } from "@/types/stock";
 import type { PaginationParams } from "@/types/pagination";
 import { apiClientPaginated, apiClientPaginatedData } from "@/lib/api/pagination";
@@ -361,11 +362,26 @@ export const api = {
     ) => apiClientPaginated<TransferRecord>("/transfers/history", params),
     updateStatus: (
       id: string,
-      data: { status: "RECEIVED" | "CANCELLED"; notes?: string }
+      data: { status: "RECEIVED" | "CANCELLED" | "RETURNED"; notes?: string }
     ) =>
       apiClient<TransferRecord>(`/transfers/${id}/status`, {
         method: "PATCH",
         body: JSON.stringify(data),
+      }),
+    returnGoods: (id: string, data?: { notes?: string }) =>
+      apiClient<TransferRecord>(`/transfers/${id}/return`, {
+        method: "POST",
+        body: JSON.stringify(data ?? {}),
+      }),
+    activity: (params?: { dateFrom?: string; dateTo?: string; limit?: number }) =>
+      apiClient<TransferActivityReport>("/transfers/activity", {
+        params: params
+          ? {
+              ...(params.dateFrom ? { dateFrom: params.dateFrom } : {}),
+              ...(params.dateTo ? { dateTo: params.dateTo } : {}),
+              ...(params.limit != null ? { limit: String(params.limit) } : {}),
+            }
+          : undefined,
       }),
   },
 
@@ -479,6 +495,54 @@ export const api = {
     list: (filters?: AuditFilters & PaginationParams) =>
       apiClientPaginated<AuditLogEntry>("/audit", filters),
     summary: () => apiClient<AuditSummary>("/audit/summary"),
+  },
+
+  checklists: {
+    today: (date?: string) =>
+      apiClient<import("@/types/checklist").TodayChecklist[]>(
+        `/checklists/today${date ? `?date=${date}` : ""}`
+      ),
+    list: () => apiClient<import("@/types/checklist").Checklist[]>("/checklists"),
+    adminAll: () =>
+      apiClient<import("@/types/checklist").Checklist[]>("/checklists/admin/all"),
+    progress: (id: string, date: string) =>
+      apiClient<import("@/types/checklist").ChecklistProgress>(
+        `/checklists/${id}/progress?date=${date}`
+      ),
+    create: (data: {
+      title: string;
+      description?: string;
+      assignedUserIds: string[];
+      tasks: Array<{ title: string; sortOrder?: number }>;
+    }) =>
+      apiClient<import("@/types/checklist").Checklist>("/checklists", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    update: (
+      id: string,
+      data: Partial<{
+        title: string;
+        description: string;
+        assignedUserIds: string[];
+        tasks: Array<{ title: string; sortOrder?: number }>;
+        isActive: boolean;
+      }>
+    ) =>
+      apiClient<import("@/types/checklist").Checklist>(`/checklists/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    complete: (checklistId: string, taskId: string, date?: string) =>
+      apiClient<{ completed: boolean; completedAt?: string }>(
+        `/checklists/${checklistId}/tasks/${taskId}/complete`,
+        { method: "POST", body: JSON.stringify(date ? { date } : {}) }
+      ),
+    uncomplete: (checklistId: string, taskId: string, date?: string) =>
+      apiClient<{ completed: boolean }>(
+        `/checklists/${checklistId}/tasks/${taskId}/uncomplete`,
+        { method: "POST", body: JSON.stringify(date ? { date } : {}) }
+      ),
   },
 
   permissions: {

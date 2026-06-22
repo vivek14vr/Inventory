@@ -9,14 +9,14 @@ type StatCardProps = {
 const variantStyles = {
   default: "border-zinc-200/80 bg-white",
   warning: "border-amber-200/80 bg-amber-50/50",
-  success: "border-emerald-200/80 bg-emerald-50/40",
+  success: "border-orange-200/80 bg-orange-50/40",
   info: "border-sky-200/80 bg-sky-50/40",
 };
 
 const iconBg = {
   default: "bg-zinc-100 text-zinc-600",
   warning: "bg-amber-100 text-amber-700",
-  success: "bg-emerald-100 text-emerald-700",
+  success: "bg-orange-100 text-orange-700",
   info: "bg-sky-100 text-sky-700",
 };
 

@@ -91,6 +91,32 @@ export type AdminDashboard = {
   pendingTransfers: number;
   lowStockCount: number;
   lowStockThreshold: number;
+  lowStockItems: Array<{
+    warehouseId: string;
+    warehouseName: string;
+    warehouseCode: string;
+    productId: string;
+    productName: string;
+    brandId: string;
+    brandName: string;
+    quantity: number;
+  }>;
+  transferActivity: Array<{
+    id: string;
+    date: string;
+    status: string;
+    quantity: number;
+    product: string;
+    brand: string;
+    sourceWarehouse: string;
+    destinationWarehouse: string;
+    initiatedBy?: string;
+    receivedBy?: string;
+    returnedBy?: string;
+    createdAt: string;
+    receivedAt?: string;
+    returnedAt?: string;
+  }>;
   warehouseSummaries: StockSummary["byWarehouse"];
   recentMovements: StockMovement[];
   recentSales: Array<{

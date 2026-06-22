@@ -14,22 +14,17 @@ export function buildAppNavGroups(
   role: string,
   permissions?: PermissionGrant[]
 ): NavGroup[] {
-  const groups: NavGroup[] = [];
+  const mainMenu: NavGroup["items"] = [];
+  const moreMenu: NavGroup["items"] = [];
 
-  const overview: NavGroup["items"] = [];
   if (
     hasAnyPermission(role, permissions, [
       Permission.DASHBOARD_VIEW,
       Permission.INVENTORY_DASHBOARD,
     ])
   ) {
-    overview.push({ href: AUTH_ROUTES.appDashboard, label: "Dashboard" });
+    mainMenu.push({ href: AUTH_ROUTES.appDashboard, label: "Home" });
   }
-  if (overview.length) {
-    groups.push({ title: "Overview", items: overview });
-  }
-
-  const operations: NavGroup["items"] = [];
   if (
     hasAnyPermission(role, permissions, [
       Permission.STOCK_IN,
@@ -37,14 +32,18 @@ export function buildAppNavGroups(
       Permission.STOCK_VIEW,
     ])
   ) {
-    operations.push({ href: AUTH_ROUTES.appStock, label: "Stock" });
+    mainMenu.push({ href: AUTH_ROUTES.appStock, label: "Stock" });
   }
   if (hasAnyPermission(role, permissions, [Permission.TRANSFERS_RECEIVE])) {
-    operations.push({ href: AUTH_ROUTES.appReceive, label: "Receive" });
+    mainMenu.push({ href: AUTH_ROUTES.appReceive, label: "Send Stock" });
   }
   if (hasAnyPermission(role, permissions, [Permission.INVENTORY_VIEW])) {
-    operations.push({ href: AUTH_ROUTES.appInventory, label: "Inventory" });
+    mainMenu.push({ href: AUTH_ROUTES.appInventory, label: "Check Stock" });
   }
+  if (hasAnyPermission(role, permissions, [Permission.REPORTS_VIEW])) {
+    mainMenu.push({ href: AUTH_ROUTES.appReports, label: "Reports" });
+  }
+
   if (
     hasAnyPermission(role, permissions, [
       Permission.TRANSFERS_VIEW,
@@ -52,26 +51,18 @@ export function buildAppNavGroups(
       Permission.TRANSFERS_MANAGE,
     ])
   ) {
-    operations.push({ href: AUTH_ROUTES.appTransfers, label: "Transfers" });
+    moreMenu.push({ href: AUTH_ROUTES.appTransfers, label: "Transfer List" });
   }
   if (hasAnyPermission(role, permissions, [Permission.IMPORTS_MANAGE])) {
-    operations.push({ href: AUTH_ROUTES.appImports, label: "Tally Import" });
+    moreMenu.push({ href: AUTH_ROUTES.appImports, label: "Import Sales" });
   }
-  if (hasAnyPermission(role, permissions, [Permission.REPORTS_VIEW])) {
-    operations.push({ href: AUTH_ROUTES.appReports, label: "Reports" });
-  }
-  if (operations.length) {
-    groups.push({ title: "Operations", items: operations });
-  }
-
-  const master: NavGroup["items"] = [];
   if (
     hasAnyPermission(role, permissions, [
       Permission.WAREHOUSES_VIEW,
       Permission.WAREHOUSES_MANAGE,
     ])
   ) {
-    master.push({ href: AUTH_ROUTES.appWarehouses, label: "Warehouses" });
+    moreMenu.push({ href: AUTH_ROUTES.appWarehouses, label: "Warehouses" });
   }
   if (
     hasAnyPermission(role, permissions, [
@@ -79,7 +70,7 @@ export function buildAppNavGroups(
       Permission.BRANDS_MANAGE,
     ])
   ) {
-    master.push({ href: AUTH_ROUTES.appBrands, label: "Brands" });
+    moreMenu.push({ href: AUTH_ROUTES.appBrands, label: "Brands" });
   }
   if (
     hasAnyPermission(role, permissions, [
@@ -87,22 +78,24 @@ export function buildAppNavGroups(
       Permission.PRODUCTS_MANAGE,
     ])
   ) {
-    master.push({ href: AUTH_ROUTES.appProducts, label: "Products" });
+    moreMenu.push({ href: AUTH_ROUTES.appProducts, label: "Products" });
   }
-  if (master.length) {
-    groups.push({ title: "Master data", items: master });
-  }
-
-  const system: NavGroup["items"] = [];
   if (hasAnyPermission(role, permissions, [Permission.USERS_MANAGE])) {
-    system.push({ href: AUTH_ROUTES.appUsers, label: "Users" });
+    moreMenu.push({ href: AUTH_ROUTES.appUsers, label: "Users" });
   }
   if (hasAnyPermission(role, permissions, [Permission.AUDIT_VIEW])) {
-    system.push({ href: AUTH_ROUTES.appAudit, label: "Audit" });
+    moreMenu.push({ href: AUTH_ROUTES.appAudit, label: "Activity Log" });
   }
-  if (system.length) {
-    groups.push({ title: "System", items: system });
+  if (hasAnyPermission(role, permissions, [Permission.CHECKLISTS_COMPLETE])) {
+    mainMenu.push({ href: AUTH_ROUTES.appChecklists, label: "Daily Tasks" });
   }
 
+  const groups: NavGroup[] = [];
+  if (mainMenu.length) {
+    groups.push({ title: "Main menu", items: mainMenu });
+  }
+  if (moreMenu.length) {
+    groups.push({ title: "More", items: moreMenu });
+  }
   return groups;
 }

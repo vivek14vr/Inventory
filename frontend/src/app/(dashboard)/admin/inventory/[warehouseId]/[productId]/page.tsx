@@ -84,7 +84,7 @@ export default function InventoryItemDetailPage() {
         <Alert type="error" message={error} />
         <Link
           href={AUTH_ROUTES.adminInventory}
-          className="text-sm font-medium text-emerald-700 hover:text-emerald-800"
+          className="text-sm font-medium text-orange-700 hover:text-orange-800"
         >
           ← Back to inventory
         </Link>
@@ -101,7 +101,7 @@ export default function InventoryItemDetailPage() {
       <div>
         <Link
           href={AUTH_ROUTES.adminInventory}
-          className="text-sm font-medium text-emerald-700 hover:text-emerald-800"
+          className="text-sm font-medium text-orange-700 hover:text-orange-800"
         >
           ← Inventory
         </Link>
@@ -178,7 +178,7 @@ export default function InventoryItemDetailPage() {
                       <span
                         className={
                           row.direction === "in"
-                            ? "inline-flex rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800"
+                            ? "inline-flex rounded-full bg-orange-50 px-2.5 py-0.5 text-xs font-medium text-orange-800"
                             : "inline-flex rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-900"
                         }
                       >
@@ -194,7 +194,7 @@ export default function InventoryItemDetailPage() {
                     <DataTableTd
                       align="right"
                       className={`tabular-nums font-semibold ${
-                        row.change > 0 ? "text-emerald-700" : "text-amber-800"
+                        row.change > 0 ? "text-orange-700" : "text-amber-800"
                       }`}
                     >
                       {row.change > 0 ? "+" : ""}

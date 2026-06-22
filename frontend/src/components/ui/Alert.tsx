@@ -6,7 +6,7 @@ export function Alert({ message, type = "error" }: { message: string; type?: "er
       className={`flex items-start gap-3 rounded-xl border px-4 py-3.5 text-sm ${
         type === "error"
           ? "border-red-100 bg-red-50 text-red-800"
-          : "border-emerald-100 bg-emerald-50 text-emerald-800"
+          : "border-orange-100 bg-orange-50 text-orange-800"
       }`}
     >
       {type === "error" ? (

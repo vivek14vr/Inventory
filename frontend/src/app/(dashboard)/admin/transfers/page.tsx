@@ -25,7 +25,7 @@ import type { TransferRecord } from "@/types/stock";
 
 type PendingAction = {
   transfer: TransferRecord;
-  status: "RECEIVED" | "CANCELLED";
+  status: "RECEIVED" | "RETURNED";
 };
 
 export default function AdminTransfersPage() {
@@ -81,7 +81,7 @@ export default function AdminTransfersPage() {
       setSuccess(
         nextStatus === "RECEIVED"
           ? "Transfer marked as received"
-          : "Transfer cancelled; source stock restored"
+          : `${transfer.quantity} units returned to ${transfer.sourceWarehouse.name}; source warehouse restocked.`
       );
       setPendingAction(null);
       load();
@@ -96,7 +96,7 @@ export default function AdminTransfersPage() {
     <div className="space-y-6 text-zinc-900">
       <PageHeader
         title="Transfer history"
-        description="Track inter-warehouse transfers. Pending items can be received or cancelled from the actions column."
+        description="Track inter-warehouse transfers. Pending items can be received or marked as returned to restock the sending warehouse."
       />
 
       <div className="flex flex-wrap gap-3 rounded-xl border border-zinc-200/80 bg-white p-4 shadow-sm">
@@ -111,6 +111,7 @@ export default function AdminTransfersPage() {
             { value: "", label: "All statuses" },
             { value: "PENDING", label: "Pending" },
             { value: "RECEIVED", label: "Received" },
+            { value: "RETURNED", label: "Returned" },
             { value: "CANCELLED", label: "Cancelled" },
           ]}
         />
@@ -202,8 +203,13 @@ export default function AdminTransfersPage() {
                     <DataTableTd className="text-xs text-zinc-500">
                       <span className="block">{t.createdBy?.name ?? "—"}</span>
                       {t.receivedBy && (
-                        <span className="mt-0.5 block text-emerald-700">
+                        <span className="mt-0.5 block text-orange-700">
                           Received by {t.receivedBy.name}
+                        </span>
+                      )}
+                      {t.returnedBy && (
+                        <span className="mt-0.5 block text-violet-700">
+                          Returned by {t.returnedBy.name}
                         </span>
                       )}
                     </DataTableTd>
@@ -227,10 +233,10 @@ export default function AdminTransfersPage() {
                             size="sm"
                             disabled={updatingId !== null}
                             onClick={() =>
-                              setPendingAction({ transfer: t, status: "CANCELLED" })
+                              setPendingAction({ transfer: t, status: "RETURNED" })
                             }
                           >
-                            Cancel
+                            Returned
                           </Button>
                         </div>
                       ) : (
@@ -258,15 +264,15 @@ export default function AdminTransfersPage() {
           title={
             pendingAction.status === "RECEIVED"
               ? "Mark transfer as received?"
-              : "Cancel this transfer?"
+              : "Mark goods as returned?"
           }
           description={
             pendingAction.status === "RECEIVED"
               ? `${pendingAction.transfer.quantity} units of ${pendingAction.transfer.product.name} will be added to ${pendingAction.transfer.destinationWarehouse.name}.`
-              : `${pendingAction.transfer.quantity} units will be restored to ${pendingAction.transfer.sourceWarehouse.name}. The transfer will be marked cancelled.`
+              : `${pendingAction.transfer.quantity} units will be restored to ${pendingAction.transfer.sourceWarehouse.name}. The transfer will be marked as returned.`
           }
           confirmLabel={
-            pendingAction.status === "RECEIVED" ? "Mark received" : "Cancel transfer"
+            pendingAction.status === "RECEIVED" ? "Mark received" : "Confirm returned"
           }
           variant={pendingAction.status === "RECEIVED" ? "primary" : "danger"}
           loading={updatingId === pendingAction.transfer.id}

@@ -30,6 +30,7 @@ export const AUTH_ROUTES = {
   adminImports: "/admin/imports",
   adminReports: "/admin/reports",
   adminAudit: "/admin/audit",
+  adminChecklists: "/admin/checklists",
   warehouseDashboard: "/warehouse",
   warehouseStock: "/warehouse/stock",
   /** @deprecated Use warehouseStock with ?tab=in */
@@ -50,4 +51,6 @@ export const AUTH_ROUTES = {
   appProducts: "/app/products",
   appUsers: "/app/users",
   appAudit: "/app/audit",
+  appChecklists: "/app/checklists",
+  warehouseChecklists: "/warehouse/checklists",
 } as const;

@@ -21,6 +21,8 @@ import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { Alert } from "@/components/ui/Alert";
 import { AUTH_ROUTES } from "@/lib/auth/constants";
 import { api, ApiError } from "@/lib/api/client";
+import { LowStockReportPanel } from "@/components/dashboard/LowStockReportPanel";
+import { TransferActivityPanel } from "@/components/dashboard/TransferActivityPanel";
 import type { AdminDashboard } from "@/types/inventory";
 
 function StatIcons() {
@@ -82,10 +84,10 @@ export default function AdminDashboardPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Dashboard"
-        description={`Welcome back, ${user?.name ?? "Admin"}. Here's what's happening across your warehouses.`}
+        title={`Hello, ${user?.name?.split(" ")[0] ?? "Admin"}!`}
+        description="Tap a button below to get started."
         actions={
-          <Button variant="secondary" onClick={load} loading={loading}>
+          <Button variant="secondary" size="lg" onClick={load} loading={loading}>
             Refresh
           </Button>
         }
@@ -95,10 +97,69 @@ export default function AdminDashboardPage() {
 
       {loading && !data ? (
         <div className="flex justify-center py-16">
-          <LoadingSpinner label="Loading dashboard…" />
+          <LoadingSpinner label="Loading…" />
         </div>
       ) : data ? (
         <>
+          {/* Main action tiles — PetPooja-style large buttons */}
+          <section>
+            <h2 className="mb-4 text-lg font-bold text-stone-800">
+              What do you want to do?
+            </h2>
+            <div className="grid gap-4 grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <QuickActionCard
+                href={AUTH_ROUTES.adminStock}
+                title="Add / Sell Stock"
+                description="Stock in or stock out"
+                iconLabel="Stock"
+                size="large"
+                color="orange"
+              />
+              <QuickActionCard
+                href={AUTH_ROUTES.adminReceive}
+                title="Send Stock"
+                description="Transfer to another warehouse"
+                iconLabel="Send Stock"
+                size="large"
+                color="amber"
+                badge={data.pendingTransfers > 0 ? String(data.pendingTransfers) : undefined}
+              />
+              <QuickActionCard
+                href={AUTH_ROUTES.adminInventory}
+                title="Check Stock"
+                description="See what you have"
+                iconLabel="Check Stock"
+                size="large"
+                color="sky"
+                badge={data.lowStockCount > 0 ? `${data.lowStockCount} low` : undefined}
+              />
+              <QuickActionCard
+                href={AUTH_ROUTES.adminReports}
+                title="Download Reports"
+                description="Export stock & sales"
+                iconLabel="Reports"
+                size="large"
+                color="teal"
+              />
+              <QuickActionCard
+                href={AUTH_ROUTES.adminTransfers}
+                title="Transfer List"
+                description="View all transfers"
+                iconLabel="Transfer List"
+                size="large"
+                color="violet"
+              />
+              <QuickActionCard
+                href={AUTH_ROUTES.adminProducts}
+                title="Products"
+                description="Add or edit products"
+                iconLabel="Products"
+                size="large"
+                color="rose"
+              />
+            </div>
+          </section>
+
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               label="Total units"
@@ -130,13 +191,22 @@ export default function AdminDashboardPage() {
           </div>
 
           <div className="grid gap-6 lg:grid-cols-2">
+            <LowStockReportPanel
+              items={data.lowStockItems}
+              threshold={data.lowStockThreshold}
+              totalCount={data.lowStockCount}
+            />
+            <TransferActivityPanel items={data.transferActivity} />
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-2">
             <Panel
               title="Warehouse summary"
               description="Stock totals by location"
               action={
                 <Link
                   href={AUTH_ROUTES.adminInventory}
-                  className="text-sm font-medium text-emerald-700 hover:text-emerald-800"
+                  className="text-sm font-semibold text-orange-700 hover:text-orange-800"
                 >
                   View all
                 </Link>
@@ -193,7 +263,7 @@ export default function AdminDashboardPage() {
                           {s.product}{" "}
                           <span className="font-normal text-zinc-500">× {s.quantity}</span>
                         </p>
-                        <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                        <span className="shrink-0 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-800">
                           {s.warehouse}
                         </span>
                       </div>
@@ -238,7 +308,7 @@ export default function AdminDashboardPage() {
                         <span
                           className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                             m.type === "STOCK_IN"
-                              ? "bg-emerald-100 text-emerald-800"
+                              ? "bg-orange-100 text-orange-800"
                               : "bg-amber-100 text-amber-800"
                           }`}
                         >
@@ -259,50 +329,6 @@ export default function AdminDashboardPage() {
               </DataTable>
             )}
           </Panel>
-
-          <div>
-            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-zinc-500">
-              Quick actions
-            </h2>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <QuickActionCard
-                href={AUTH_ROUTES.adminStock}
-                title="Stock operations"
-                description="Stock in, sell, or transfer between warehouses"
-              />
-              <QuickActionCard
-                href={AUTH_ROUTES.adminReceive}
-                title="Receive transfers"
-                description="Confirm incoming warehouse transfers"
-                badge={data.pendingTransfers > 0 ? `${data.pendingTransfers} pending` : undefined}
-              />
-              <QuickActionCard
-                href={AUTH_ROUTES.adminInventory}
-                title="Inventory"
-                description="Stock levels, movements & low stock"
-              />
-              <QuickActionCard
-                href={AUTH_ROUTES.adminTransfers}
-                title="Transfer history"
-                description="View and manage transfer status"
-              />
-              <QuickActionCard
-                href={AUTH_ROUTES.adminImports}
-                title="Tally Import"
-                description="Upload Excel sales data"
-              />
-              <QuickActionCard
-                href={AUTH_ROUTES.adminReports}
-                title="Reports"
-                description="Export stock & sales CSV"
-              />
-              <QuickActionCard
-                href={AUTH_ROUTES.adminProducts}
-                title="Products"
-                description="Brands, products & master data"
-              />
-            </div>
-          </div>
         </>
       ) : null}
     </div>

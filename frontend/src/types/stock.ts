@@ -38,5 +38,19 @@ export type TransferRecord = PendingTransfer & {
   destinationWarehouse: { id: string; name: string; code: string };
   createdBy?: { id: string; name: string };
   receivedBy?: { id: string; name: string };
+  returnedBy?: { id: string; name: string };
   receivedAt?: string;
+  returnedAt?: string;
+  returnNotes?: string;
+};
+
+export type TransferActivityDay = {
+  date: string;
+  items: TransferRecord[];
+};
+
+export type TransferActivityReport = {
+  total: number;
+  byDate: TransferActivityDay[];
+  items: TransferRecord[];
 };

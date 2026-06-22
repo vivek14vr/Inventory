@@ -15,7 +15,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <DashboardShell
-      title="Inventory"
+      title="Stock Manager"
       subtitle={user?.name ?? "Operations"}
       navGroups={navGroups}
     >

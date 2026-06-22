@@ -1,28 +1,30 @@
 import Link from "next/link";
 
 type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "danger";
-type ButtonSize = "sm" | "md";
+type ButtonSize = "sm" | "md" | "lg" | "xl";
 
 const variants: Record<ButtonVariant, string> = {
   primary:
-    "bg-emerald-700 text-white shadow-sm shadow-emerald-900/10 hover:bg-emerald-800 focus-visible:ring-emerald-500/40",
+    "bg-orange-600 text-white shadow-sm shadow-orange-900/10 hover:bg-orange-700 focus-visible:ring-orange-500/40",
   secondary:
-    "border border-zinc-200 bg-white text-zinc-700 shadow-sm hover:bg-zinc-50 focus-visible:ring-zinc-300",
+    "border border-stone-200 bg-white text-stone-700 shadow-sm hover:bg-stone-50 focus-visible:ring-stone-300",
   outline:
-    "border border-emerald-200 bg-emerald-50 text-emerald-800 shadow-sm hover:border-emerald-300 hover:bg-emerald-100 focus-visible:ring-emerald-500/30",
+    "border border-orange-200 bg-orange-50 text-orange-800 shadow-sm hover:border-orange-300 hover:bg-orange-100 focus-visible:ring-orange-500/30",
   ghost:
-    "border border-transparent text-zinc-600 hover:border-zinc-200 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:ring-zinc-300",
+    "border border-transparent text-stone-600 hover:border-stone-200 hover:bg-stone-100 hover:text-stone-900 focus-visible:ring-stone-300",
   danger:
     "border border-red-600 bg-red-600 text-white shadow-sm hover:bg-red-700 hover:border-red-700 focus-visible:ring-red-500/40",
 };
 
 const sizes: Record<ButtonSize, string> = {
-  sm: "rounded-lg px-2.5 py-1 text-xs font-semibold",
-  md: "rounded-xl px-4 py-2 text-sm font-medium",
+  sm: "rounded-lg px-3 py-1.5 text-sm font-semibold min-h-9",
+  md: "rounded-xl px-5 py-2.5 text-sm font-semibold min-h-11",
+  lg: "rounded-xl px-6 py-3.5 text-base font-semibold min-h-13",
+  xl: "rounded-2xl px-8 py-4 text-lg font-bold min-h-14",
 };
 
 const base =
-  "inline-flex items-center justify-center gap-1.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex items-center justify-center gap-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60";
 
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant;

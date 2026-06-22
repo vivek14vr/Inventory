@@ -1,13 +1,25 @@
 @import "tailwindcss";
 
 :root {
-  --background: #fafafa;
-  --foreground: #18181b;
+  /* PetPooja-inspired warm orange theme */
+  --background: #fff8f3;
+  --foreground: #1c1917;
+  --primary: #ea580c;
+  --primary-hover: #c2410c;
+  --primary-light: #ffedd5;
+  --primary-muted: #fed7aa;
+  --surface: #ffffff;
+  --border: #e7e5e4;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-light: var(--primary-light);
+  --color-primary-muted: var(--primary-muted);
+  --color-surface: var(--surface);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -26,19 +38,19 @@ body {
 @layer components {
   .form-input,
   .form-select {
-    @apply mt-1 w-full min-h-11 rounded-lg border border-zinc-300 px-3 py-2 text-base text-zinc-900 sm:min-h-0 sm:text-sm;
+    @apply mt-1 w-full min-h-12 rounded-xl border border-stone-300 px-4 py-3 text-base text-stone-900;
   }
 
   .form-btn-primary {
-    @apply w-full min-h-11 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 active:bg-emerald-900 disabled:opacity-60 sm:w-auto sm:min-h-0;
+    @apply w-full min-h-12 rounded-xl bg-orange-600 px-5 py-3 text-base font-semibold text-white hover:bg-orange-700 active:bg-orange-800 disabled:opacity-60 sm:w-auto;
   }
 
   .form-card {
-    @apply w-full max-w-xl space-y-5 rounded-xl border border-zinc-200 bg-white p-4 sm:p-6;
+    @apply w-full max-w-xl space-y-5 rounded-2xl border border-stone-200 bg-white p-5 sm:p-7;
   }
 
   .login-label {
-    @apply block text-sm font-medium text-zinc-700;
+    @apply block text-base font-medium text-stone-700;
   }
 
   .login-input {
@@ -46,16 +58,16 @@ body {
   }
 
   .login-input:focus {
-    @apply border-emerald-500 bg-white outline-none ring-4 ring-emerald-500/10;
+    @apply border-orange-500 bg-white outline-none ring-4 ring-orange-500/15;
   }
 
   .login-submit {
-    @apply shadow-md shadow-emerald-900/15 transition-[background-color,transform,box-shadow] duration-200;
+    @apply shadow-md shadow-orange-900/15 transition-[background-color,transform,box-shadow] duration-200;
     -webkit-tap-highlight-color: transparent;
   }
 
   .login-submit:hover:not(:disabled) {
-    @apply bg-emerald-800 shadow-lg shadow-emerald-900/20;
+    @apply bg-orange-700 shadow-lg shadow-orange-900/20;
   }
 
   .login-submit:active:not(:disabled) {
@@ -63,6 +75,19 @@ body {
   }
 
   .login-submit:focus-visible {
-    @apply outline-none ring-4 ring-emerald-500/30 ring-offset-2;
+    @apply outline-none ring-4 ring-orange-500/30 ring-offset-2;
+  }
+
+  /* Large touch-friendly nav link */
+  .nav-link {
+    @apply flex min-h-[52px] items-center gap-3.5 rounded-2xl px-4 py-3 text-base font-semibold transition;
+  }
+
+  .nav-link-active {
+    @apply bg-orange-600 text-white shadow-md shadow-orange-900/20;
+  }
+
+  .nav-link-inactive {
+    @apply text-stone-600 hover:bg-orange-50 hover:text-stone-900;
   }
 }

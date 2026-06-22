@@ -5,9 +5,18 @@ import { useAuth } from "@/contexts/AuthContext";
 import { StockOperationsPanel } from "@/components/stock/StockOperationsPanel";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { getPrimaryWarehouseId } from "@/lib/auth/warehouseContext";
 
 function WarehouseStockContent() {
-  return <StockOperationsPanel />;
+  const { user } = useAuth();
+  const warehouseId = getPrimaryWarehouseId(user) ?? "";
+
+  return (
+    <StockOperationsPanel
+      defaultWarehouseId={warehouseId}
+      allowedWarehouseIds={warehouseId ? [warehouseId] : undefined}
+    />
+  );
 }
 
 export default function WarehouseStockPage() {

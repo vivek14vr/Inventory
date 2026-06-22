@@ -19,8 +19,8 @@ export default function AdminStockPage() {
   return (
     <div className="space-y-6 text-zinc-900">
       <PageHeader
-        title="Stock operations"
-        description="Add stock (in) or sell / transfer stock (out) for any warehouse."
+        title="Stock In / Stock Out"
+        description="Tap to select warehouse, brand, and product step by step."
       />
 
       <Suspense

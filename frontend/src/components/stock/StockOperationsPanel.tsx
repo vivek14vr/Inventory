@@ -62,7 +62,7 @@ export function StockOperationsPanel({
         {productsHref && tab === "in" && (
           <Link
             href={productsHref}
-            className="text-sm font-medium text-emerald-700 hover:text-emerald-800"
+            className="text-base font-semibold text-orange-700 hover:text-orange-800"
           >
             + New product
           </Link>
@@ -70,28 +70,17 @@ export function StockOperationsPanel({
       </div>
 
       {tab === "in" ? (
-        <div>
-          <p className="mb-4 text-sm text-zinc-600">
-            Add inventory — purchases, returns, or quantity corrections via receipt.
-          </p>
-          <StockInForm
-            requireWarehouse={requireWarehouse}
-            defaultWarehouseId={defaultWarehouseId}
-            allowedWarehouseIds={allowedWarehouseIds}
-          />
-        </div>
+        <StockInForm
+          requireWarehouse={requireWarehouse}
+          defaultWarehouseId={defaultWarehouseId}
+          allowedWarehouseIds={allowedWarehouseIds}
+        />
       ) : (
-        <div>
-          <p className="mb-4 text-sm text-zinc-600">
-            Remove inventory — sell to a client (direct selling) or send to another
-            warehouse (transfer).
-          </p>
-          <StockOutForm
-            requireWarehouse={requireWarehouse}
-            defaultWarehouseId={defaultWarehouseId}
-            allowedWarehouseIds={allowedWarehouseIds}
-          />
-        </div>
+        <StockOutForm
+          requireWarehouse={requireWarehouse}
+          defaultWarehouseId={defaultWarehouseId}
+          allowedWarehouseIds={allowedWarehouseIds}
+        />
       )}
     </div>
   );
@@ -110,10 +99,10 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+      className={`rounded-2xl px-6 py-4 text-base font-bold transition min-h-14 ${
         active
-          ? "bg-emerald-100 text-emerald-900"
-          : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+          ? "bg-orange-600 text-white shadow-md shadow-orange-900/20"
+          : "border-2 border-stone-200 bg-white text-stone-600 hover:border-orange-200 hover:bg-orange-50"
       }`}
     >
       {children}

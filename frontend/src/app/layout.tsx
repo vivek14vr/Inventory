@@ -30,7 +30,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body
-        className="min-h-full flex flex-col bg-zinc-50 text-zinc-900 antialiased"
+        className="min-h-full flex flex-col bg-[var(--background)] text-stone-900 antialiased"
         suppressHydrationWarning
       >
         <AuthProvider>{children}</AuthProvider>

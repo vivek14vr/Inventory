@@ -132,7 +132,7 @@ export default function AdminInventoryPage() {
             onClick={() => handleTabChange(key)}
             className={`rounded-lg px-4 py-2 text-sm font-medium ${
               tab === key
-                ? "bg-emerald-100 text-emerald-900"
+                ? "bg-orange-100 text-orange-900"
                 : "text-zinc-600 hover:bg-zinc-100"
             }`}
           >
@@ -151,7 +151,7 @@ export default function AdminInventoryPage() {
               resetPage();
             }}
             placeholder="Product, brand, warehouse…"
-            className="w-full min-w-[200px] rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+            className="w-full min-w-[200px] rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm shadow-sm focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
           />
         </FilterField>
         <FilterSelect
@@ -269,7 +269,7 @@ function StockView({
                   <DataTableTd>
                     <Link
                       href={AUTH_ROUTES.adminInventoryItem(r.warehouseId, r.productId)}
-                      className="font-medium text-emerald-800 hover:text-emerald-900 hover:underline"
+                      className="font-medium text-orange-800 hover:text-orange-900 hover:underline"
                     >
                       {r.productName}
                     </Link>
@@ -464,7 +464,7 @@ function MovementsView({ movements }: { movements: StockMovement[] }) {
                   <span
                     className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                       m.type === "STOCK_IN"
-                        ? "bg-emerald-100 text-emerald-800"
+                        ? "bg-orange-100 text-orange-800"
                         : "bg-amber-100 text-amber-800"
                     }`}
                   >

@@ -1,8 +1,9 @@
 const STATUS_STYLES: Record<string, string> = {
   PENDING: "bg-amber-100 text-amber-900 ring-amber-200/80",
-  RECEIVED: "bg-emerald-100 text-emerald-900 ring-emerald-200/80",
+  RECEIVED: "bg-orange-100 text-orange-900 ring-orange-200/80",
   CANCELLED: "bg-red-100 text-red-900 ring-red-200/80",
-  active: "bg-emerald-100 text-emerald-900 ring-emerald-200/80",
+  RETURNED: "bg-violet-100 text-violet-900 ring-violet-200/80",
+  active: "bg-orange-100 text-orange-900 ring-orange-200/80",
   inactive: "bg-zinc-100 text-zinc-600 ring-zinc-200/80",
 };
 
@@ -10,6 +11,7 @@ const STATUS_LABELS: Record<string, string> = {
   PENDING: "Pending",
   RECEIVED: "Received",
   CANCELLED: "Cancelled",
+  RETURNED: "Returned",
 };
 
 type StatusBadgeProps =

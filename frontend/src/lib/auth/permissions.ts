@@ -21,6 +21,8 @@ export const Permission = {
   IMPORTS_MANAGE: "imports.manage",
   USERS_MANAGE: "users.manage",
   AUDIT_VIEW: "audit.view",
+  CHECKLISTS_MANAGE: "checklists.manage",
+  CHECKLISTS_COMPLETE: "checklists.complete",
 } as const;
 
 export type PermissionCode = (typeof Permission)[keyof typeof Permission];
@@ -82,6 +84,7 @@ export function defaultWarehouseOperatorPermissions(
     { code: Permission.STOCK_OUT, warehouseId },
     { code: Permission.TRANSFERS_VIEW, warehouseId },
     { code: Permission.TRANSFERS_RECEIVE, warehouseId },
+    { code: Permission.CHECKLISTS_COMPLETE },
   ];
 }
 
@@ -142,6 +145,8 @@ export function getDefaultAppPath(
     { codes: [Permission.PRODUCTS_MANAGE, Permission.PRODUCTS_VIEW], path: "/app/products" },
     { codes: [Permission.USERS_MANAGE], path: "/app/users" },
     { codes: [Permission.AUDIT_VIEW], path: "/app/audit" },
+    { codes: [Permission.CHECKLISTS_COMPLETE], path: "/app/checklists" },
+    { codes: [Permission.CHECKLISTS_MANAGE], path: "/admin/checklists" },
   ];
 
   for (const { codes, path } of checks) {
@@ -181,6 +186,10 @@ export const APP_ROUTE_PERMISSIONS: Array<{
   { prefix: "/app/products", permissions: [Permission.PRODUCTS_VIEW, Permission.PRODUCTS_MANAGE] },
   { prefix: "/app/users", permissions: [Permission.USERS_MANAGE] },
   { prefix: "/app/audit", permissions: [Permission.AUDIT_VIEW] },
+  {
+    prefix: "/app/checklists",
+    permissions: [Permission.CHECKLISTS_COMPLETE, Permission.CHECKLISTS_MANAGE],
+  },
 ];
 
 export function canAccessAppPath(
