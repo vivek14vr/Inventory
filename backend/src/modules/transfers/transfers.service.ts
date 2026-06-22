@@ -1,4 +1,5 @@
 import { Types } from "mongoose";
+import type mongoose from "mongoose";
 import { AuditLog } from "../../models/AuditLog.js";
 import { StockMovement } from "../../models/StockMovement.js";
 import { Transfer } from "../../models/Transfer.js";
@@ -11,9 +12,13 @@ import { BadRequestError, ForbiddenError, NotFoundError } from "../../shared/err
 import type { AuthUser } from "../../shared/types/auth.js";
 import {
   getWarehouseIdsForPermission,
+  hasPermission,
   isAdmin,
 } from "../../shared/utils/permissions.js";
 import { dbSession, runInTransaction } from "../../shared/utils/mongoTransaction.js";
+import {
+  buildTransferAuditMetadata,
+} from "../../shared/utils/auditMetadata.js";
 import * as balanceService from "../stock/inventory.service.js";
 import {
   buildPaginationMeta,
@@ -37,6 +42,9 @@ function mapTransfer(t: {
   destinationWarehouseId: unknown;
   createdBy?: unknown;
   receivedBy?: unknown;
+  returnedBy?: unknown;
+  returnedAt?: Date;
+  returnNotes?: string;
 }) {
   const product = t.productId as unknown as { _id: Types.ObjectId; name: string };
   const brand = t.brandId as unknown as { _id: Types.ObjectId; name: string };
@@ -52,6 +60,7 @@ function mapTransfer(t: {
   };
   const createdBy = t.createdBy as unknown as { _id: Types.ObjectId; name: string } | null;
   const receivedBy = t.receivedBy as unknown as { _id: Types.ObjectId; name: string } | null;
+  const returnedBy = t.returnedBy as unknown as { _id: Types.ObjectId; name: string } | null;
 
   return {
     id: String(t._id),
@@ -75,8 +84,57 @@ function mapTransfer(t: {
     receivedBy: receivedBy
       ? { id: String(receivedBy._id), name: receivedBy.name }
       : undefined,
+    returnedBy: returnedBy
+      ? { id: String(returnedBy._id), name: returnedBy.name }
+      : undefined,
     createdAt: t.createdAt,
     receivedAt: t.receivedAt,
+    returnedAt: t.returnedAt,
+    returnNotes: t.returnNotes,
+  };
+}
+
+async function transferAuditSnapshot(
+  transferId: Types.ObjectId,
+  session: mongoose.ClientSession | null
+) {
+  const doc = await Transfer.findById(transferId)
+    .populate("productId", "name")
+    .populate("brandId", "name")
+    .populate("sourceWarehouseId", "name code")
+    .populate("destinationWarehouseId", "name code")
+    .populate("createdBy", "name email")
+    .populate("receivedBy", "name email")
+    .populate("returnedBy", "name email")
+    .session(session ?? null)
+    .lean();
+
+  if (!doc) return null;
+
+  const d = doc as unknown as {
+    _id: Types.ObjectId;
+    quantity: number;
+    status: string;
+    productId: { _id: Types.ObjectId; name: string };
+    brandId: { _id: Types.ObjectId; name: string };
+    sourceWarehouseId: { _id: Types.ObjectId; name: string; code: string };
+    destinationWarehouseId: { _id: Types.ObjectId; name: string; code: string };
+    createdBy?: { _id: Types.ObjectId; name: string; email?: string };
+    receivedBy?: { _id: Types.ObjectId; name: string; email?: string };
+    returnedBy?: { _id: Types.ObjectId; name: string; email?: string };
+  };
+
+  return {
+    transferId: d._id,
+    quantity: d.quantity,
+    status: d.status,
+    product: d.productId,
+    brand: d.brandId,
+    sourceWarehouse: d.sourceWarehouseId,
+    destinationWarehouse: d.destinationWarehouseId,
+    initiatedBy: d.createdBy,
+    receivedBy: d.receivedBy,
+    returnedBy: d.returnedBy,
   };
 }
 
@@ -168,6 +226,7 @@ export async function listTransferHistory(query: TransferHistoryQuery) {
       .populate("destinationWarehouseId", "name code")
       .populate("createdBy", "name")
       .populate("receivedBy", "name")
+      .populate("returnedBy", "name")
       .lean(),
   ]);
 
@@ -198,7 +257,10 @@ export async function updateTransferStatus(
       );
     }
 
-    if (input.status === TransferStatus.CANCELLED) {
+    if (
+      input.status === TransferStatus.CANCELLED ||
+      input.status === TransferStatus.RETURNED
+    ) {
       const newQty = await balanceService.adjustBalance(
         String(transfer.sourceWarehouseId),
         String(transfer.productId),
@@ -206,21 +268,41 @@ export async function updateTransferStatus(
         session
       );
 
-      transfer.status = TransferStatus.CANCELLED;
+      const isReturn = input.status === TransferStatus.RETURNED;
+      transfer.status = isReturn ? TransferStatus.RETURNED : TransferStatus.CANCELLED;
+      if (isReturn) {
+        transfer.returnedBy = new Types.ObjectId(user.id);
+        transfer.returnedAt = new Date();
+        transfer.returnNotes = input.notes?.trim();
+      }
       await transfer.save(dbSession(session));
+
+      const snapshot = await transferAuditSnapshot(transfer._id, session);
 
       await AuditLog.create(
         [
           {
-            action: "TRANSFER_CANCELLED",
+            action: isReturn ? "TRANSFER_RETURNED" : "TRANSFER_CANCELLED",
             entity: "Transfer",
             entityId: transfer._id,
             userId: user.id,
-            metadata: {
+            metadata: buildTransferAuditMetadata({
+              transferId: transfer._id,
               quantity: transfer.quantity,
-              restoredBalance: newQty,
-              notes: input.notes,
-            },
+              status: isReturn ? TransferStatus.RETURNED : TransferStatus.CANCELLED,
+              product: snapshot?.product ?? null,
+              brand: snapshot?.brand ?? null,
+              sourceWarehouse: snapshot?.sourceWarehouse ?? null,
+              destinationWarehouse: snapshot?.destinationWarehouse ?? null,
+              initiatedBy: snapshot?.initiatedBy ?? null,
+              returnedBy: isReturn
+                ? { _id: new Types.ObjectId(user.id), name: user.name }
+                : undefined,
+              extra: {
+                restoredBalance: newQty,
+                notes: input.notes,
+              },
+            }),
           },
         ],
         dbSession(session)
@@ -260,6 +342,8 @@ export async function updateTransferStatus(
       transfer.receivedAt = new Date();
       await transfer.save(dbSession(session));
 
+      const snapshot = await transferAuditSnapshot(transfer._id, session);
+
       await AuditLog.create(
         [
           {
@@ -267,12 +351,22 @@ export async function updateTransferStatus(
             entity: "Transfer",
             entityId: transfer._id,
             userId: user.id,
-            metadata: {
+            metadata: buildTransferAuditMetadata({
+              transferId: transfer._id,
               quantity: transfer.quantity,
-              destinationBalance: newQty,
-              adminOverride: true,
-              notes: input.notes,
-            },
+              status: TransferStatus.RECEIVED,
+              product: snapshot?.product ?? null,
+              brand: snapshot?.brand ?? null,
+              sourceWarehouse: snapshot?.sourceWarehouse ?? null,
+              destinationWarehouse: snapshot?.destinationWarehouse ?? null,
+              initiatedBy: snapshot?.initiatedBy ?? null,
+              receivedBy: { _id: new Types.ObjectId(user.id), name: user.name },
+              extra: {
+                destinationBalance: newQty,
+                adminOverride: true,
+                notes: input.notes,
+              },
+            }),
           },
         ],
         dbSession(session)
@@ -286,8 +380,209 @@ export async function updateTransferStatus(
       .populate("destinationWarehouseId", "name code")
       .populate("createdBy", "name")
       .populate("receivedBy", "name")
+      .populate("returnedBy", "name")
       .lean();
 
     return mapTransfer(updated!);
   });
+}
+
+function assertCanReturnTransfer(user: AuthUser, transfer: {
+  destinationWarehouseId: Types.ObjectId;
+}) {
+  if (isAdmin(user)) return;
+  const destId = String(transfer.destinationWarehouseId);
+  const allowed =
+    hasPermission(user, Permission.TRANSFERS_MANAGE, destId) ||
+    hasPermission(user, Permission.STOCK_OUT, destId) ||
+    hasPermission(user, Permission.TRANSFERS_RECEIVE, destId);
+  if (!allowed) {
+    throw new ForbiddenError("You do not have permission to return this transfer");
+  }
+}
+
+export async function returnTransfer(
+  transferId: string,
+  input: { notes?: string },
+  user: AuthUser
+) {
+  if (!Types.ObjectId.isValid(transferId)) {
+    throw new BadRequestError("Invalid transfer ID");
+  }
+
+  return runInTransaction(async (session) => {
+    const transfer = await Transfer.findById(transferId).session(session ?? null);
+    if (!transfer) {
+      throw new NotFoundError("Transfer not found");
+    }
+
+    if (transfer.status !== TransferStatus.RECEIVED) {
+      throw new BadRequestError(
+        `Only received transfers can be returned (current: ${transfer.status})`
+      );
+    }
+
+    assertCanReturnTransfer(user, transfer);
+
+    const sourceId = String(transfer.sourceWarehouseId);
+    const destId = String(transfer.destinationWarehouseId);
+    const productId = String(transfer.productId);
+    const qty = transfer.quantity;
+
+    await balanceService.assertSufficientStock(destId, productId, qty, session);
+
+    const note =
+      input.notes?.trim() ||
+      `Goods returned to ${sourceId} — transfer ${transferId}`;
+
+    const [outMovement] = await StockMovement.create(
+      [
+        {
+          type: StockMovementType.STOCK_OUT,
+          warehouseId: transfer.destinationWarehouseId,
+          productId: transfer.productId,
+          brandId: transfer.brandId,
+          quantity: qty,
+          transferId: transfer._id,
+          notes: `Return to source warehouse: ${note}`,
+          createdBy: user.id,
+        },
+      ],
+      dbSession(session)
+    );
+
+    const destBalance = await balanceService.adjustBalance(
+      destId,
+      productId,
+      -qty,
+      session
+    );
+
+    const [inMovement] = await StockMovement.create(
+      [
+        {
+          type: StockMovementType.STOCK_IN,
+          warehouseId: transfer.sourceWarehouseId,
+          productId: transfer.productId,
+          brandId: transfer.brandId,
+          quantity: qty,
+          transferId: transfer._id,
+          notes: `Return from destination warehouse: ${note}`,
+          createdBy: user.id,
+        },
+      ],
+      dbSession(session)
+    );
+
+    const sourceBalance = await balanceService.adjustBalance(
+      sourceId,
+      productId,
+      qty,
+      session
+    );
+
+    transfer.status = TransferStatus.RETURNED;
+    transfer.returnedBy = new Types.ObjectId(user.id);
+    transfer.returnedAt = new Date();
+    transfer.returnNotes = input.notes?.trim();
+    transfer.stockReturnOutMovementId = outMovement._id;
+    transfer.stockReturnInMovementId = inMovement._id;
+    await transfer.save(dbSession(session));
+
+    const snapshot = await transferAuditSnapshot(transfer._id, session);
+
+    await AuditLog.create(
+      [
+        {
+          action: "TRANSFER_RETURNED",
+          entity: "Transfer",
+          entityId: transfer._id,
+          userId: user.id,
+          metadata: buildTransferAuditMetadata({
+            transferId: transfer._id,
+            quantity: qty,
+            status: TransferStatus.RETURNED,
+            product: snapshot?.product ?? null,
+            brand: snapshot?.brand ?? null,
+            sourceWarehouse: snapshot?.sourceWarehouse ?? null,
+            destinationWarehouse: snapshot?.destinationWarehouse ?? null,
+            initiatedBy: snapshot?.initiatedBy ?? null,
+            receivedBy: snapshot?.receivedBy ?? null,
+            returnedBy: { _id: new Types.ObjectId(user.id), name: user.name },
+            extra: {
+              sourceBalance,
+              destinationBalance: destBalance,
+              notes: input.notes,
+            },
+          }),
+        },
+      ],
+      dbSession(session)
+    );
+
+    const updated = await Transfer.findById(transferId)
+      .populate("productId", "name")
+      .populate("brandId", "name")
+      .populate("sourceWarehouseId", "name code")
+      .populate("destinationWarehouseId", "name code")
+      .populate("createdBy", "name")
+      .populate("receivedBy", "name")
+      .populate("returnedBy", "name")
+      .lean();
+
+    return mapTransfer(updated!);
+  });
+}
+
+export async function listTransferActivity(query: {
+  dateFrom?: string;
+  dateTo?: string;
+  limit?: number;
+}) {
+  const filter: Record<string, unknown> = {};
+  if (query.dateFrom || query.dateTo) {
+    filter.createdAt = {};
+    if (query.dateFrom) {
+      (filter.createdAt as Record<string, Date>).$gte = new Date(query.dateFrom);
+    }
+    if (query.dateTo) {
+      const end = new Date(query.dateTo);
+      end.setHours(23, 59, 59, 999);
+      (filter.createdAt as Record<string, Date>).$lte = end;
+    }
+  }
+
+  const limit = query.limit ?? 100;
+
+  const transfers = await Transfer.find(filter)
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .populate("productId", "name")
+    .populate("brandId", "name")
+    .populate("sourceWarehouseId", "name code")
+    .populate("destinationWarehouseId", "name code")
+    .populate("createdBy", "name email")
+    .populate("receivedBy", "name email")
+    .populate("returnedBy", "name email")
+    .lean();
+
+  const grouped = new Map<string, ReturnType<typeof mapTransfer>[]>();
+
+  for (const t of transfers) {
+    const mapped = mapTransfer(t);
+    const day = new Date(t.createdAt).toISOString().slice(0, 10);
+    const bucket = grouped.get(day) ?? [];
+    bucket.push(mapped);
+    grouped.set(day, bucket);
+  }
+
+  const byDate = [...grouped.entries()]
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([date, items]) => ({ date, items }));
+
+  return {
+    total: transfers.length,
+    byDate,
+    items: transfers.map((t) => mapTransfer(t)),
+  };
 }

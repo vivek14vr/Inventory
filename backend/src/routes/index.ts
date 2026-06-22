@@ -11,6 +11,7 @@ import { importsRoutes } from "../modules/imports/imports.routes.js";
 import { reportsRoutes } from "../modules/reports/reports.routes.js";
 import { auditRoutes } from "../modules/audit/audit.routes.js";
 import { usersRoutes } from "../modules/users/users.routes.js";
+import { checklistsRoutes } from "../modules/checklists/checklists.routes.js";
 import { permissionsRoutes } from "../modules/permissions/permissions.routes.js";
 
 export function createApiRouter(): Router {
@@ -29,6 +30,7 @@ export function createApiRouter(): Router {
   router.use("/imports", importsRoutes);
   router.use("/reports", reportsRoutes);
   router.use("/audit", auditRoutes);
+  router.use("/checklists", checklistsRoutes);
 
   return router;
 }

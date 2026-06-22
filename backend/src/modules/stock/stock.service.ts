@@ -1,6 +1,7 @@
 import { Types } from "mongoose";
 import type mongoose from "mongoose";
 import { AuditLog } from "../../models/AuditLog.js";
+import { Brand } from "../../models/Brand.js";
 import { StockMovement } from "../../models/StockMovement.js";
 import { Transfer } from "../../models/Transfer.js";
 import { Warehouse } from "../../models/Warehouse.js";
@@ -12,6 +13,10 @@ import {
 import { BadRequestError, ForbiddenError, NotFoundError } from "../../shared/errors/AppError.js";
 import type { AuthUser } from "../../shared/types/auth.js";
 import { dbSession, runInTransaction } from "../../shared/utils/mongoTransaction.js";
+import {
+  buildStockMovementAuditMetadata,
+  buildTransferAuditMetadata,
+} from "../../shared/utils/auditMetadata.js";
 import { Permission } from "../../shared/constants/permissions.js";
 import {
   getWarehouseIdsForPermission,
@@ -132,10 +137,15 @@ export async function stockIn(input: StockInInput, user: AuthUser) {
       return receiveTransfer(input, user, warehouseId, session);
     }
 
-    const { productId, brandId } = await inventoryService.validateProductForBrand(
+    const { productId, brandId, name: productName } = await inventoryService.validateProductForBrand(
       input.productId,
       input.brandId
     );
+
+    const [warehouse, brand] = await Promise.all([
+      Warehouse.findById(warehouseId).lean(),
+      Brand.findById(brandId).lean(),
+    ]);
 
     const newQty = await inventoryService.adjustBalance(
       warehouseId,
@@ -166,7 +176,13 @@ export async function stockIn(input: StockInInput, user: AuthUser) {
           entity: "StockMovement",
           entityId: movement._id,
           userId: user.id,
-          metadata: { quantity: input.quantity, warehouseId },
+          metadata: buildStockMovementAuditMetadata({
+            quantity: input.quantity,
+            warehouse: warehouse as { _id: Types.ObjectId; name: string; code: string } | null,
+            product: { _id: productId, name: productName },
+            brand: brand as { _id: Types.ObjectId; name: string } | null,
+            notes: input.notes,
+          }),
         },
       ],
       dbSession(session)
@@ -253,6 +269,26 @@ async function receiveTransfer(
   transfer.receivedAt = new Date();
   await transfer.save(dbSession(session));
 
+  const populatedTransfer = await Transfer.findById(transfer._id)
+    .populate("productId", "name")
+    .populate("brandId", "name")
+    .populate("sourceWarehouseId", "name code")
+    .populate("destinationWarehouseId", "name code")
+    .populate("createdBy", "name email")
+    .session(session ?? null)
+    .lean();
+
+  const pt = populatedTransfer as unknown as {
+    _id: Types.ObjectId;
+    quantity: number;
+    status: string;
+    productId: { _id: Types.ObjectId; name: string };
+    brandId: { _id: Types.ObjectId; name: string };
+    sourceWarehouseId: { _id: Types.ObjectId; name: string; code: string };
+    destinationWarehouseId: { _id: Types.ObjectId; name: string; code: string };
+    createdBy?: { _id: Types.ObjectId; name: string; email?: string };
+  };
+
   await AuditLog.create(
     [
       {
@@ -260,7 +296,17 @@ async function receiveTransfer(
         entity: "Transfer",
         entityId: transfer._id,
         userId: user.id,
-        metadata: { quantity: transfer.quantity },
+        metadata: buildTransferAuditMetadata({
+          transferId: transfer._id,
+          quantity: transfer.quantity,
+          status: TransferStatus.RECEIVED,
+          product: pt.productId,
+          brand: pt.brandId,
+          sourceWarehouse: pt.sourceWarehouseId,
+          destinationWarehouse: pt.destinationWarehouseId,
+          initiatedBy: pt.createdBy ?? null,
+          receivedBy: { _id: new Types.ObjectId(user.id), name: user.name },
+        }),
       },
     ],
     dbSession(session)
@@ -288,7 +334,7 @@ export async function stockOut(input: StockOutInput, user: AuthUser) {
       input.warehouseId,
       Permission.STOCK_OUT
     );
-    const { productId, brandId } = await inventoryService.validateProductForBrand(
+    const { productId, brandId, name: productName } = await inventoryService.validateProductForBrand(
       input.productId,
       input.brandId
     );
@@ -309,6 +355,13 @@ export async function stockOut(input: StockOutInput, user: AuthUser) {
 
     let transferId: Types.ObjectId | undefined;
     let destinationWarehouseId: Types.ObjectId | undefined;
+    let destinationWarehouse: { _id: Types.ObjectId; name: string; code: string } | null =
+      null;
+
+    const [sourceWarehouse, brand] = await Promise.all([
+      Warehouse.findById(warehouseId).lean(),
+      Brand.findById(brandId).lean(),
+    ]);
 
     if (input.dispatchType === DispatchType.TRANSFER) {
       if (!input.destinationWarehouseId) {
@@ -328,6 +381,11 @@ export async function stockOut(input: StockOutInput, user: AuthUser) {
       }
 
       destinationWarehouseId = destination._id;
+      destinationWarehouse = {
+        _id: destination._id,
+        name: destination.name,
+        code: destination.code,
+      };
     }
 
     const [movement] = await StockMovement.create(
@@ -374,6 +432,32 @@ export async function stockOut(input: StockOutInput, user: AuthUser) {
       transferId = transfer._id;
       movement.transferId = transferId;
       await movement.save(dbSession(session));
+
+      await AuditLog.create(
+        [
+          {
+            action: "TRANSFER_CREATED",
+            entity: "Transfer",
+            entityId: transfer._id,
+            userId: user.id,
+            metadata: buildTransferAuditMetadata({
+              transferId: transfer._id,
+              quantity: input.quantity,
+              status: TransferStatus.PENDING,
+              product: { _id: productId, name: productName },
+              brand: brand as { _id: Types.ObjectId; name: string } | null,
+              sourceWarehouse: sourceWarehouse as {
+                _id: Types.ObjectId;
+                name: string;
+                code: string;
+              } | null,
+              destinationWarehouse,
+              initiatedBy: { _id: new Types.ObjectId(user.id), name: user.name },
+            }),
+          },
+        ],
+        dbSession(session)
+      );
     }
 
     await AuditLog.create(
@@ -383,11 +467,22 @@ export async function stockOut(input: StockOutInput, user: AuthUser) {
           entity: "StockMovement",
           entityId: movement._id,
           userId: user.id,
-          metadata: {
+          metadata: buildStockMovementAuditMetadata({
             quantity: input.quantity,
+            warehouse: sourceWarehouse as {
+              _id: Types.ObjectId;
+              name: string;
+              code: string;
+            } | null,
+            product: { _id: productId, name: productName },
+            brand: brand as { _id: Types.ObjectId; name: string } | null,
             dispatchType: input.dispatchType,
-            warehouseId,
-          },
+            destinationWarehouse,
+            transferId,
+            clientName: input.clientName?.trim(),
+            invoiceNumber: input.invoiceNumber?.trim(),
+            notes: input.notes,
+          }),
         },
       ],
       dbSession(session)

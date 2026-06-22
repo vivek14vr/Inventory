@@ -24,6 +24,7 @@ export const TransferStatus = {
   PENDING: "PENDING",
   RECEIVED: "RECEIVED",
   CANCELLED: "CANCELLED",
+  RETURNED: "RETURNED",
 } as const;
 
 export type TransferStatusValue =

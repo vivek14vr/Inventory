@@ -10,6 +10,8 @@ import { asyncHandler } from "../../shared/utils/asyncHandler.js";
 import { sendSuccess } from "../../shared/utils/apiResponse.js";
 import * as transfersService from "./transfers.service.js";
 import {
+  returnTransferSchema,
+  transferActivityQuerySchema,
   transferHistoryQuerySchema,
   updateTransferStatusSchema,
 } from "./transfers.validation.js";
@@ -35,9 +37,23 @@ router.get(
 );
 
 router.get(
+  "/activity",
+  authenticate,
+  requireAdminOrPermission(Permission.INVENTORY_DASHBOARD),
+  asyncHandler(async (req, res) => {
+    const parsed = transferActivityQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      throw new BadRequestError(parsed.error.errors[0]?.message ?? "Invalid query");
+    }
+    const data = await transfersService.listTransferActivity(parsed.data);
+    sendSuccess(res, data);
+  })
+);
+
+router.get(
   "/history",
   authenticate,
-  requireAdminOrPermission(Permission.TRANSFERS_MANAGE),
+  requireAnyPermission([Permission.TRANSFERS_VIEW, Permission.TRANSFERS_MANAGE]),
   asyncHandler(async (req, res) => {
     const parsed = transferHistoryQuerySchema.safeParse(req.query);
     if (!parsed.success) {
@@ -60,6 +76,23 @@ router.patch(
       throw new BadRequestError(parsed.error.errors[0]?.message ?? "Invalid body");
     }
     const transfer = await transfersService.updateTransferStatus(
+      String(req.params.id),
+      parsed.data,
+      req.user!
+    );
+    sendSuccess(res, transfer);
+  })
+);
+
+router.post(
+  "/:id/return",
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const parsed = returnTransferSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new BadRequestError(parsed.error.errors[0]?.message ?? "Invalid body");
+    }
+    const transfer = await transfersService.returnTransfer(
       String(req.params.id),
       parsed.data,
       req.user!

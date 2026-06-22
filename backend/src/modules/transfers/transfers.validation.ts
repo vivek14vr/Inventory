@@ -8,6 +8,7 @@ export const transferHistoryQuerySchema = paginationQuerySchema.extend({
       TransferStatus.PENDING,
       TransferStatus.RECEIVED,
       TransferStatus.CANCELLED,
+      TransferStatus.RETURNED,
     ])
     .optional(),
   sourceWarehouseId: z.string().optional(),
@@ -20,8 +21,26 @@ export const transferHistoryQuerySchema = paginationQuerySchema.extend({
 export type TransferHistoryQuery = z.infer<typeof transferHistoryQuerySchema>;
 
 export const updateTransferStatusSchema = z.object({
-  status: z.enum([TransferStatus.RECEIVED, TransferStatus.CANCELLED]),
+  status: z.enum([
+    TransferStatus.RECEIVED,
+    TransferStatus.CANCELLED,
+    TransferStatus.RETURNED,
+  ]),
   notes: z.string().trim().max(500).optional(),
 });
 
 export type UpdateTransferStatusInput = z.infer<typeof updateTransferStatusSchema>;
+
+export const returnTransferSchema = z.object({
+  notes: z.string().trim().max(500).optional(),
+});
+
+export type ReturnTransferInput = z.infer<typeof returnTransferSchema>;
+
+export const transferActivityQuerySchema = z.object({
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(500).optional().default(100),
+});
+
+export type TransferActivityQuery = z.infer<typeof transferActivityQuerySchema>;

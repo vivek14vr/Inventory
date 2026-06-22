@@ -555,9 +555,47 @@ export async function getAdminDashboard() {
   const lowStock = await listLowStock({
     threshold: DEFAULT_LOW_STOCK_THRESHOLD,
     page: 1,
-    limit: 1,
+    limit: 10,
     sortBy: "quantity",
     sortOrder: "asc",
+  });
+
+  const recentTransfers = await Transfer.find()
+    .sort({ createdAt: -1 })
+    .limit(15)
+    .populate("productId", "name")
+    .populate("brandId", "name")
+    .populate("sourceWarehouseId", "name code")
+    .populate("destinationWarehouseId", "name code")
+    .populate("createdBy", "name")
+    .populate("receivedBy", "name")
+    .populate("returnedBy", "name")
+    .lean();
+
+  const transferActivity = recentTransfers.map((t) => {
+    const product = t.productId as unknown as { name: string };
+    const brand = t.brandId as unknown as { name: string };
+    const source = t.sourceWarehouseId as unknown as { name: string; code: string };
+    const dest = t.destinationWarehouseId as unknown as { name: string; code: string };
+    const createdBy = t.createdBy as unknown as { name: string } | null;
+    const receivedBy = t.receivedBy as unknown as { name: string } | null;
+    const returnedBy = t.returnedBy as unknown as { name: string } | null;
+    return {
+      id: String(t._id),
+      date: t.createdAt.toISOString().slice(0, 10),
+      status: t.status,
+      quantity: t.quantity,
+      product: product.name,
+      brand: brand.name,
+      sourceWarehouse: source.code,
+      destinationWarehouse: dest.code,
+      initiatedBy: createdBy?.name,
+      receivedBy: receivedBy?.name,
+      returnedBy: returnedBy?.name,
+      createdAt: t.createdAt,
+      receivedAt: t.receivedAt,
+      returnedAt: t.returnedAt,
+    };
   });
 
   const sales = recentSales.map((m) => {
@@ -587,6 +625,17 @@ export async function getAdminDashboard() {
     pendingTransfers,
     lowStockCount: lowStock.count,
     lowStockThreshold: lowStock.threshold,
+    lowStockItems: lowStock.items.map((row) => ({
+      warehouseId: row.warehouseId,
+      warehouseName: row.warehouseName,
+      warehouseCode: row.warehouseCode,
+      productId: row.productId,
+      productName: row.productName,
+      brandId: row.brandId,
+      brandName: row.brandName,
+      quantity: row.quantity,
+    })),
+    transferActivity,
     warehouseSummaries: stockSummary.byWarehouse,
     recentMovements: recentMovements.items,
     recentSales: sales,

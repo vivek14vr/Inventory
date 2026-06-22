@@ -13,6 +13,11 @@ export interface ITransfer extends Document {
   createdBy: Types.ObjectId;
   receivedBy?: Types.ObjectId;
   receivedAt?: Date;
+  returnedBy?: Types.ObjectId;
+  returnedAt?: Date;
+  stockReturnOutMovementId?: Types.ObjectId;
+  stockReturnInMovementId?: Types.ObjectId;
+  returnNotes?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -30,7 +35,7 @@ const transferSchema = new Schema<ITransfer>(
     quantity: { type: Number, required: true, min: 1 },
     status: {
       type: String,
-      enum: ["PENDING", "RECEIVED", "CANCELLED"],
+      enum: ["PENDING", "RECEIVED", "CANCELLED", "RETURNED"],
       default: "PENDING",
     },
     stockOutMovementId: { type: Schema.Types.ObjectId, ref: "StockMovement", required: true },
@@ -38,6 +43,11 @@ const transferSchema = new Schema<ITransfer>(
     createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
     receivedBy: { type: Schema.Types.ObjectId, ref: "User" },
     receivedAt: { type: Date },
+    returnedBy: { type: Schema.Types.ObjectId, ref: "User" },
+    returnedAt: { type: Date },
+    stockReturnOutMovementId: { type: Schema.Types.ObjectId, ref: "StockMovement" },
+    stockReturnInMovementId: { type: Schema.Types.ObjectId, ref: "StockMovement" },
+    returnNotes: { type: String, trim: true },
   },
   { timestamps: true }
 );

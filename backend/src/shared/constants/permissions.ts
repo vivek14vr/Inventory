@@ -30,6 +30,9 @@ export const Permission = {
   USERS_MANAGE: "users.manage",
 
   AUDIT_VIEW: "audit.view",
+
+  CHECKLISTS_MANAGE: "checklists.manage",
+  CHECKLISTS_COMPLETE: "checklists.complete",
 } as const;
 
 export type PermissionCode = (typeof Permission)[keyof typeof Permission];
@@ -162,6 +165,16 @@ export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
     warehouseScoped: false,
     permissions: [{ code: Permission.AUDIT_VIEW, label: "View audit log" }],
   },
+  {
+    id: "checklists",
+    label: "Daily checklists",
+    description: "Assign and track daily tasks for staff",
+    warehouseScoped: false,
+    permissions: [
+      { code: Permission.CHECKLISTS_MANAGE, label: "Create & assign checklists" },
+      { code: Permission.CHECKLISTS_COMPLETE, label: "Complete daily tasks" },
+    ],
+  },
 ];
 
 const WAREHOUSE_SCOPED = new Set<PermissionCode>(
@@ -189,5 +202,6 @@ export function defaultWarehouseOperatorPermissions(
     Permission.STOCK_OUT,
     Permission.TRANSFERS_VIEW,
     Permission.TRANSFERS_RECEIVE,
+    Permission.CHECKLISTS_COMPLETE,
   ].map((code) => ({ code, warehouseId }));
 }
