@@ -135,7 +135,7 @@ export function getDefaultAppPath(
       path: "/app/stock",
     },
     { codes: [Permission.INVENTORY_VIEW], path: "/app/inventory" },
-    { codes: [Permission.TRANSFERS_RECEIVE], path: "/app/receive" },
+    { codes: [Permission.TRANSFERS_RECEIVE], path: "/app/transfer" },
     { codes: [Permission.TRANSFERS_VIEW], path: "/app/transfers" },
     { codes: [Permission.TRANSFERS_MANAGE], path: "/app/transfers" },
     { codes: [Permission.REPORTS_VIEW], path: "/app/reports" },
@@ -163,11 +163,39 @@ export const APP_ROUTE_PERMISSIONS: Array<{
 }> = [
   { prefix: "/app", permissions: [Permission.DASHBOARD_VIEW, Permission.INVENTORY_DASHBOARD] },
   {
+    prefix: "/app/stock-in",
+    permissions: [Permission.STOCK_IN, Permission.STOCK_VIEW],
+  },
+  {
+    prefix: "/app/stock-out",
+    permissions: [Permission.STOCK_OUT, Permission.STOCK_VIEW],
+  },
+  {
+    prefix: "/app/transfer",
+    permissions: [
+      Permission.STOCK_OUT,
+      Permission.TRANSFERS_RECEIVE,
+      Permission.TRANSFERS_VIEW,
+      Permission.TRANSFERS_MANAGE,
+    ],
+  },
+  {
+    prefix: "/app/receive",
+    permissions: [Permission.TRANSFERS_RECEIVE, Permission.TRANSFERS_VIEW],
+  },
+  {
+    prefix: "/app/return",
+    permissions: [
+      Permission.STOCK_IN,
+      Permission.TRANSFERS_RECEIVE,
+      Permission.TRANSFERS_VIEW,
+    ],
+  },
+  {
     prefix: "/app/stock",
     permissions: [Permission.STOCK_IN, Permission.STOCK_OUT, Permission.STOCK_VIEW],
   },
   { prefix: "/app/inventory", permissions: [Permission.INVENTORY_VIEW, Permission.INVENTORY_ADJUST] },
-  { prefix: "/app/receive", permissions: [Permission.TRANSFERS_RECEIVE, Permission.TRANSFERS_VIEW] },
   {
     prefix: "/app/transfers",
     permissions: [

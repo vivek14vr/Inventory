@@ -8,6 +8,7 @@ import type { AuthUser } from "../../shared/types/auth.js";
 import { buildChecklistAuditMetadata } from "../../shared/utils/auditMetadata.js";
 import { isAdmin } from "../../shared/utils/permissions.js";
 import type { CreateChecklistInput, UpdateChecklistInput } from "./checklists.validation.js";
+import { resolveTaskNotifications } from "../notifications/checklistReminders.js";
 
 function todayDateString(): string {
   const d = new Date();
@@ -15,6 +16,15 @@ function todayDateString(): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+export function isPastDueTime(dueTime?: string, at: Date = new Date()): boolean {
+  if (!dueTime) return false;
+  const [hours, minutes] = dueTime.split(":").map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return false;
+  const due = new Date(at);
+  due.setHours(hours, minutes, 0, 0);
+  return at > due;
 }
 
 function mapChecklist(doc: IChecklist) {
@@ -28,6 +38,7 @@ function mapChecklist(doc: IChecklist) {
         id: String(t._id),
         title: t.title,
         sortOrder: t.sortOrder,
+        dueTime: t.dueTime,
       }))
       .sort((a, b) => a.sortOrder - b.sortOrder),
     createdBy: String(doc.createdBy),
@@ -69,6 +80,7 @@ export async function createChecklist(input: CreateChecklistInput, user: AuthUse
   const tasks = input.tasks.map((t, i) => ({
     title: t.title.trim(),
     sortOrder: t.sortOrder ?? i,
+    dueTime: t.dueTime,
   }));
 
   const [checklist] = await Checklist.create([
@@ -123,6 +135,7 @@ export async function updateChecklist(
       _id: new Types.ObjectId(),
       title: t.title.trim(),
       sortOrder: t.sortOrder ?? i,
+      dueTime: t.dueTime,
     })) as IChecklist["tasks"];
   }
 
@@ -164,22 +177,30 @@ export async function getTodayChecklists(user: AuthUser, date?: string) {
 
   return checklists.map((c) => {
     const mapped = mapChecklist(c as unknown as IChecklist);
+    const now = new Date();
+    const tasksWithStatus = mapped.tasks.map((t) => {
+      const completed = completedSet.has(`${c._id}:${t.id}`);
+      const completedAt = completions.find(
+        (comp) =>
+          String(comp.checklistId) === String(c._id) &&
+          String(comp.taskId) === t.id
+      )?.completedAt;
+      const pastDue = !completed && isPastDueTime(t.dueTime, now);
+      return {
+        ...t,
+        completed,
+        completedAt,
+        isPastDue: pastDue,
+      };
+    });
+    const hasOverdue = tasksWithStatus.some((t) => t.isPastDue);
     return {
       ...mapped,
       date: day,
-      tasks: mapped.tasks.map((t) => ({
-        ...t,
-        completed: completedSet.has(`${c._id}:${t.id}`),
-        completedAt: completions.find(
-          (comp) =>
-            String(comp.checklistId) === String(c._id) &&
-            String(comp.taskId) === t.id
-        )?.completedAt,
-      })),
-      completedCount: mapped.tasks.filter((t) =>
-        completedSet.has(`${c._id}:${t.id}`)
-      ).length,
-      totalCount: mapped.tasks.length,
+      isPastDue: hasOverdue,
+      tasks: tasksWithStatus,
+      completedCount: tasksWithStatus.filter((t) => t.completed).length,
+      totalCount: tasksWithStatus.length,
     };
   });
 }
@@ -231,6 +252,10 @@ export async function completeTask(
     },
   ]);
 
+  const completedLate = isPastDueTime(task.dueTime, completion.completedAt);
+
+  await resolveTaskNotifications(user.id, checklistId, taskId, day);
+
   await AuditLog.create({
     action: "CHECKLIST_TASK_COMPLETED",
     entity: "ChecklistCompletion",
@@ -242,10 +267,17 @@ export async function completeTask(
       taskId,
       taskTitle: task.title,
       date: day,
+      dueTime: task.dueTime,
+      completedLate,
+      userName: user.name,
     }),
   });
 
-  return { completed: true, completedAt: completion.completedAt };
+  return {
+    completed: true,
+    completedAt: completion.completedAt,
+    completedLate,
+  };
 }
 
 export async function uncompleteTask(
@@ -293,6 +325,8 @@ export async function uncompleteTask(
         taskId,
         taskTitle: task.title,
         date: day,
+        dueTime: task.dueTime,
+        userName: user.name,
       }),
     });
   }
@@ -330,9 +364,14 @@ export async function getChecklistProgress(
     userId: { $in: targetUserIds },
   }).lean();
 
+  const now = new Date();
+
   return {
     checklist: mapped,
     date,
+    isPastDue: mapped.tasks.some(
+      (t) => isPastDueTime(t.dueTime, now)
+    ),
     users: users.map((u) => {
       const uid = String(u._id);
       const userCompletions = completions.filter((c) => String(c.userId) === uid);
@@ -342,19 +381,54 @@ export async function getChecklistProgress(
         | null
         | undefined;
 
+      const tasks = mapped.tasks.map((t) => {
+        const completed = completedSet.has(t.id);
+        const completedAt = userCompletions.find((c) => String(c.taskId) === t.id)
+          ?.completedAt;
+        const pastDue = !completed && isPastDueTime(t.dueTime, now);
+        return {
+          ...t,
+          completed,
+          completedAt,
+          isPastDue: pastDue,
+          completedLate:
+            completed && completedAt
+              ? isPastDueTime(t.dueTime, completedAt)
+              : false,
+        };
+      });
+
+      const pendingTasks = tasks
+        .filter((t) => !t.completed)
+        .map((t) => ({
+          title: t.title,
+          dueTime: t.dueTime,
+          isPastDue: t.isPastDue,
+        }));
+      const completedTasks = tasks
+        .filter((t) => t.completed)
+        .map((t) => ({
+          title: t.title,
+          dueTime: t.dueTime,
+          completedAt: t.completedAt,
+          completedLate: t.completedLate,
+        }));
+
+      const allDone = tasks.every((t) => t.completed);
+      const hasOverdue = tasks.some((t) => t.isPastDue);
+
       return {
         id: uid,
         name: u.name,
         email: u.email,
         role: u.role,
         warehouse: warehouse ? { name: warehouse.name, code: warehouse.code } : undefined,
-        tasks: mapped.tasks.map((t) => ({
-          ...t,
-          completed: completedSet.has(t.id),
-          completedAt: userCompletions.find((c) => String(c.taskId) === t.id)?.completedAt,
-        })),
-        completedCount: mapped.tasks.filter((t) => completedSet.has(t.id)).length,
-        totalCount: mapped.tasks.length,
+        tasks,
+        pendingTasks,
+        completedTasks,
+        completedCount: tasks.filter((t) => t.completed).length,
+        totalCount: tasks.length,
+        status: allDone ? "completed" : hasOverdue ? "overdue" : "pending",
       };
     }),
   };

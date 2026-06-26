@@ -7,6 +7,12 @@ import { SelectionGrid } from "@/components/ui/SelectionGrid";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { api, ApiError } from "@/lib/api/client";
+import {
+  formatEnteredQuantityPreview,
+  formatStockUnitHint,
+  stockUnitQuestionLabel,
+  stockUnitsToBase,
+} from "@/lib/products/productUnits";
 import type { Brand, Product, Warehouse } from "@/types/master";
 import type { PendingTransfer } from "@/types/stock";
 
@@ -17,7 +23,9 @@ type StockInFormProps = {
   transfer?: PendingTransfer;
   defaultWarehouseId?: string;
   allowedWarehouseIds?: string[];
+  returnMode?: "client" | "warehouse";
   onSuccess?: (message: string) => void;
+  onBack?: () => void;
 };
 
 export function StockInForm({
@@ -25,7 +33,9 @@ export function StockInForm({
   transfer,
   defaultWarehouseId = "",
   allowedWarehouseIds,
+  returnMode,
   onSuccess,
+  onBack,
 }: StockInFormProps) {
   const pickWarehouse = shouldPickWarehouse({ requireWarehouse, allowedWarehouseIds, transfer });
 
@@ -47,6 +57,8 @@ export function StockInForm({
   const [brandId, setBrandId] = useState(transfer?.brand.id ?? "");
   const [productId, setProductId] = useState(transfer?.product.id ?? "");
   const [quantity, setQuantity] = useState(transfer ? String(transfer.quantity) : "");
+  const [clientName, setClientName] = useState("");
+  const [invoiceNumber, setInvoiceNumber] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -145,23 +157,37 @@ export function StockInForm({
     setSubmitting(true);
     try {
       const whId = transfer?.destinationWarehouse?.id ?? resolvedWarehouseId;
+      const enteredQty = parseInt(quantity, 10);
+      const baseQty = transfer
+        ? enteredQty
+        : stockUnitsToBase(enteredQty, selectedProduct);
       const result = await api.stock.stockIn({
         ...(whId ? { warehouseId: whId } : {}),
         brandId,
         productId,
-        quantity: parseInt(quantity, 10),
+        quantity: baseQty,
         transferId: transfer?.id,
+        clientName:
+          returnMode === "client" ? clientName.trim() || undefined : undefined,
+        invoiceNumber:
+          returnMode === "client" ? invoiceNumber.trim() || undefined : undefined,
         notes: notes || undefined,
       });
       const msg = transfer
         ? `Transfer received. New balance: ${result.balance}`
-        : `Stock added. New balance: ${result.balance}`;
+        : returnMode === "client"
+          ? `Client return recorded. New balance: ${result.balance}`
+          : returnMode === "warehouse"
+            ? `Warehouse return recorded. New balance: ${result.balance}`
+            : `Stock added. New balance: ${result.balance}`;
       setSuccess(msg);
       onSuccess?.(msg);
       if (!transfer) {
         setBrandId("");
         setProductId("");
         setQuantity("");
+        setClientName("");
+        setInvoiceNumber("");
         setNotes("");
         setStep(pickWarehouse ? "warehouse" : "brand");
         if (!pickWarehouse) {
@@ -189,6 +215,22 @@ export function StockInForm({
 
   return (
     <div className="space-y-5">
+      {onBack && step !== "confirm" && (
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex min-h-12 items-center gap-2 rounded-2xl border-2 border-stone-200 bg-white px-5 text-base font-bold text-stone-600 transition hover:border-orange-200 hover:bg-orange-50"
+        >
+          <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5" aria-hidden>
+            <path
+              fillRule="evenodd"
+              d="M11.78 4.22a.75.75 0 010 1.06L7.56 9.5h8.19a.75.75 0 010 1.5H7.56l4.22 4.22a.75.75 0 11-1.06 1.06l-5.5-5.5a.75.75 0 010-1.06l5.5-5.5a.75.75 0 011.06 0z"
+              clipRule="evenodd"
+            />
+          </svg>
+          Back
+        </button>
+      )}
       <StockFlowBar steps={flowSteps} />
       <Alert message={error} />
       <Alert message={success} type="success" />
@@ -205,8 +247,12 @@ export function StockInForm({
 
       {step === "warehouse" && (
         <SelectionGrid
-          title="Select warehouse"
-          subtitle="Which warehouse are you adding stock to?"
+          title={returnMode ? "Return to which warehouse?" : "Select warehouse"}
+          subtitle={
+            returnMode
+              ? "Where are you adding the returned stock?"
+              : "Which warehouse are you adding stock to?"
+          }
           items={warehouseOptions.map((w) => ({
             id: w.id,
             title: w.name,
@@ -242,7 +288,14 @@ export function StockInForm({
           subtitle={selectedBrand ? `Brand: ${selectedBrand.name}` : undefined}
           items={products
             .filter((p) => p.isActive)
-            .map((p) => ({ id: p.id, title: p.name }))}
+            .map((p) => ({
+              id: p.id,
+              title: p.name,
+              subtitle:
+                p.unitsPerStockUnit > 1
+                  ? `1 ${p.stockUnit} = ${p.unitsPerStockUnit} units`
+                  : undefined,
+            }))}
           onSelect={selectProduct}
           onBack={goBack}
           loading={loadingProducts}
@@ -269,7 +322,9 @@ export function StockInForm({
           </button>
 
           <div className="rounded-2xl border-2 border-stone-200 bg-white p-5 sm:p-6">
-            <h2 className="text-xl font-bold text-stone-900">Enter quantity</h2>
+            <h2 className="text-xl font-bold text-stone-900">
+              {returnMode ? "Return details" : "Enter quantity"}
+            </h2>
             <p className="mt-1 text-base text-stone-500">
               {selectedProduct?.name}
               {selectedBrand ? ` · ${selectedBrand.name}` : ""}
@@ -277,10 +332,45 @@ export function StockInForm({
             </p>
 
             <div className="mt-5 space-y-4">
+              {returnMode === "client" && (
+                <>
+                  <div>
+                    <label className="block text-base font-semibold text-stone-700">
+                      Client name
+                    </label>
+                    <input
+                      value={clientName}
+                      onChange={(e) => setClientName(e.target.value)}
+                      required
+                      className="form-input mt-2"
+                      placeholder="Who is returning the goods?"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-base font-semibold text-stone-700">
+                      Invoice / reference (optional)
+                    </label>
+                    <input
+                      value={invoiceNumber}
+                      onChange={(e) => setInvoiceNumber(e.target.value)}
+                      className="form-input mt-2"
+                      placeholder="Original invoice or return note"
+                    />
+                  </div>
+                </>
+              )}
+
               <div>
                 <label className="block text-base font-semibold text-stone-700">
-                  How many units?
+                  {transfer
+                    ? "How many units?"
+                    : stockUnitQuestionLabel(selectedProduct)}
                 </label>
+                {!transfer && formatStockUnitHint(selectedProduct) && (
+                  <p className="mt-1 text-sm text-orange-700">
+                    {formatStockUnitHint(selectedProduct)}
+                  </p>
+                )}
                 <input
                   type="number"
                   min={1}
@@ -291,6 +381,19 @@ export function StockInForm({
                   className="form-input mt-2 text-2xl font-bold"
                   placeholder="0"
                 />
+                {!transfer &&
+                  quantity &&
+                  formatEnteredQuantityPreview(
+                    parseInt(quantity, 10),
+                    selectedProduct
+                  ) && (
+                    <p className="mt-2 text-sm font-semibold text-stone-600">
+                      {formatEnteredQuantityPreview(
+                        parseInt(quantity, 10),
+                        selectedProduct
+                      )}
+                    </p>
+                  )}
               </div>
 
               <div>
@@ -301,7 +404,11 @@ export function StockInForm({
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   className="form-input mt-2"
-                  placeholder="Purchase receipt, batch number, etc."
+                  placeholder={
+                    returnMode
+                      ? "Condition of goods, reason for return, etc."
+                      : "Purchase receipt, batch number, etc."
+                  }
                 />
               </div>
             </div>
@@ -312,7 +419,11 @@ export function StockInForm({
               loading={submitting}
               className="mt-6 w-full"
             >
-              {transfer ? "Confirm receive" : "Add stock"}
+              {transfer
+                ? "Confirm receive"
+                : returnMode
+                  ? "Record return"
+                  : "Add stock"}
             </Button>
           </div>
         </form>

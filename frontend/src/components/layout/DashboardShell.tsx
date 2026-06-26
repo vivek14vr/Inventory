@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { BrandLogo } from "@/components/auth/BrandLogo";
+import { ChecklistNotificationBell } from "@/components/notifications/ChecklistNotificationBell";
 import { NavIcon } from "@/components/layout/NavIcon";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -19,6 +20,8 @@ type DashboardShellProps = {
   title: string;
   subtitle?: string;
   navGroups: NavGroup[];
+  notificationsHref?: string;
+  checklistsHref?: string;
 };
 
 function UserInitial({ name }: { name: string }) {
@@ -35,6 +38,8 @@ export function DashboardShell({
   title,
   subtitle,
   navGroups,
+  notificationsHref,
+  checklistsHref,
 }: DashboardShellProps) {
   const { user, logout } = useAuth();
   const pathname = usePathname();
@@ -71,12 +76,21 @@ export function DashboardShell({
     <div className="flex h-full flex-col bg-white">
       <div className="flex items-center gap-3 border-b border-orange-100 bg-gradient-to-r from-orange-600 to-orange-500 px-5 py-5 text-white">
         <BrandLogo size="sm" variant="light" />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-base font-bold">{title}</p>
           <p className="truncate text-sm text-orange-100">
             {subtitle ?? "SV Enterprises"}
           </p>
         </div>
+        {notificationsHref && (
+          <div className="shrink-0 [&_button]:border-white/30 [&_button]:bg-white/10 [&_button]:text-white [&_button]:hover:border-white [&_button]:hover:bg-white/20">
+            <ChecklistNotificationBell
+              notificationsHref={notificationsHref}
+              checklistsHref={checklistsHref}
+              align="left"
+            />
+          </div>
+        )}
       </div>
 
       <nav className="flex-1 space-y-2 overflow-y-auto px-3 py-4">
@@ -180,7 +194,14 @@ export function DashboardShell({
             </svg>
           </button>
           <p className="text-base font-bold text-stone-900">{title}</p>
-          <UserInitial name={user?.name ?? "?"} />
+          {notificationsHref ? (
+            <ChecklistNotificationBell
+              notificationsHref={notificationsHref}
+              checklistsHref={checklistsHref}
+            />
+          ) : (
+            <UserInitial name={user?.name ?? "?"} />
+          )}
         </header>
 
         <main className="px-4 py-5 pb-24 sm:px-6 sm:py-7 lg:px-8 lg:py-8 lg:pb-8">

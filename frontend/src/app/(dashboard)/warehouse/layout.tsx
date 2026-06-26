@@ -8,10 +8,12 @@ const navGroups = [
     title: "Main menu",
     items: [
       { href: AUTH_ROUTES.warehouseDashboard, label: "Home" },
-      { href: AUTH_ROUTES.warehouseStock, label: "Stock" },
+      { href: AUTH_ROUTES.warehouseStockIn, label: "Stock In" },
+      { href: AUTH_ROUTES.warehouseStockOut, label: "Stock Out" },
+      { href: AUTH_ROUTES.warehouseTransfer, label: "Transfer" },
       { href: AUTH_ROUTES.warehouseInventory, label: "Check Stock" },
       { href: AUTH_ROUTES.warehouseChecklists, label: "Daily Tasks" },
-      { href: AUTH_ROUTES.warehouseTransfers, label: "Transfers" },
+      { href: AUTH_ROUTES.warehouseNotifications, label: "Notifications" },
     ],
   },
 ];
@@ -26,6 +28,8 @@ export default function WarehouseLayout({
       title="Warehouse"
       subtitle="Stock operations"
       navGroups={navGroups}
+      notificationsHref={AUTH_ROUTES.warehouseNotifications}
+      checklistsHref={AUTH_ROUTES.warehouseChecklists}
     >
       {children}
     </DashboardShell>

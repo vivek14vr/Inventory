@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
+import { ButtonSelect } from "@/components/ui/ButtonSelect";
 import type { Warehouse } from "@/types/master";
 import type { TallyImport, TallyImportRow } from "@/types/imports";
 
@@ -82,24 +83,13 @@ export default function AdminImportsPage() {
       >
         <h2 className="font-medium text-zinc-900">Upload report</h2>
 
-        <div>
-          <label className="block text-sm font-medium text-zinc-700">
-            Warehouse (stock deducted from)
-          </label>
-          <select
-            required
-            value={warehouseId}
-            onChange={(e) => setWarehouseId(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900"
-          >
-            <option value="">Select warehouse</option>
-            {warehouses.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        <ButtonSelect
+          label="Warehouse (stock deducted from)"
+          value={warehouseId}
+          onChange={setWarehouseId}
+          options={warehouses.map((w) => ({ value: w.id, label: w.name }))}
+          emptyMessage="No warehouses available"
+        />
 
         <div>
           <label className="block text-sm font-medium text-zinc-700">

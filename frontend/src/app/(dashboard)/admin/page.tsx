@@ -108,18 +108,26 @@ export default function AdminDashboardPage() {
             </h2>
             <div className="grid gap-4 grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               <QuickActionCard
-                href={AUTH_ROUTES.adminStock}
-                title="Add / Sell Stock"
-                description="Stock in or stock out"
-                iconLabel="Stock"
+                href={AUTH_ROUTES.adminStockIn}
+                title="Stock In"
+                description="Add stock to a warehouse"
+                iconLabel="Stock In"
                 size="large"
                 color="orange"
               />
               <QuickActionCard
-                href={AUTH_ROUTES.adminReceive}
+                href={AUTH_ROUTES.adminStockOut}
+                title="Stock Out"
+                description="Sell to a client"
+                iconLabel="Stock Out"
+                size="large"
+                color="orange"
+              />
+              <QuickActionCard
+                href={AUTH_ROUTES.adminTransfer}
                 title="Send Stock"
                 description="Transfer to another warehouse"
-                iconLabel="Send Stock"
+                iconLabel="Transfer"
                 size="large"
                 color="amber"
                 badge={data.pendingTransfers > 0 ? String(data.pendingTransfers) : undefined}
@@ -156,6 +164,22 @@ export default function AdminDashboardPage() {
                 iconLabel="Products"
                 size="large"
                 color="rose"
+              />
+              <QuickActionCard
+                href={AUTH_ROUTES.adminReturn}
+                title="Return"
+                description="From client or warehouse"
+                iconLabel="Return"
+                size="large"
+                color="emerald"
+              />
+              <QuickActionCard
+                href={AUTH_ROUTES.adminInvoices}
+                title="Invoices"
+                description="Fix client & invoice numbers"
+                iconLabel="Invoices"
+                size="large"
+                color="indigo"
               />
             </div>
           </section>
@@ -217,8 +241,8 @@ export default function AdminDashboardPage() {
                   title="No stock recorded"
                   description="Add stock via Stock In or create products first."
                   action={
-                    <ButtonLink href={AUTH_ROUTES.adminStock} variant="primary">
-                      Stock operations
+                    <ButtonLink href={AUTH_ROUTES.adminStockIn} variant="primary">
+                      Stock in
                     </ButtonLink>
                   }
                 />

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ButtonSelect } from "@/components/ui/ButtonSelect";
 import { api, ApiError } from "@/lib/api/client";
 import type { Brand, Product } from "@/types/master";
 
@@ -55,44 +56,32 @@ export function BrandProductFields({
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
+      <ButtonSelect
+        label="Brand"
+        value={brandId}
+        disabled={disabled}
+        onChange={(id) => {
+          onBrandChange(id);
+          onProductChange("");
+        }}
+        options={brands.map((b) => ({ value: b.id, label: b.name }))}
+        emptyMessage="No brands available"
+      />
       <div>
-        <label className="block text-sm font-medium text-zinc-700">Brand</label>
-        <select
-          required
-          disabled={disabled}
-          value={brandId}
-          onChange={(e) => {
-            onBrandChange(e.target.value);
-            onProductChange("");
-          }}
-          className="form-select"
-        >
-          <option value="">Select brand</option>
-          {brands.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-zinc-700">Product</label>
-        <select
-          required
-          disabled={disabled || !brandId || loadingProducts}
+        <ButtonSelect
+          label="Product"
           value={productId}
-          onChange={(e) => onProductChange(e.target.value)}
-          className="form-select"
-        >
-          <option value="">
-            {loadingProducts ? "Loading…" : "Select product"}
-          </option>
-          {products.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
+          disabled={disabled || !brandId || loadingProducts}
+          onChange={onProductChange}
+          options={products.map((p) => ({ value: p.id, label: p.name }))}
+          emptyMessage={
+            loadingProducts
+              ? "Loading…"
+              : brandId
+                ? "No products for this brand"
+                : "Select a brand first"
+          }
+        />
         {loadError && (
           <p className="mt-1 text-xs text-amber-700">{loadError}</p>
         )}

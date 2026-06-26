@@ -8,10 +8,13 @@ import { sendSuccess } from "../../shared/utils/apiResponse.js";
 import * as inventoryAdminService from "./inventory.service.js";
 import {
   adjustStockSchema,
+  invoiceListQuerySchema,
+  invoiceLookupQuerySchema,
   lowStockQuerySchema,
   movementsQuerySchema,
   stockItemDetailQuerySchema,
   stockQuerySchema,
+  updateMovementInvoiceSchema,
 } from "./inventory.validation.js";
 
 const router = Router();
@@ -94,6 +97,53 @@ router.patch(
       throw new BadRequestError(parsed.error.errors[0]?.message ?? "Invalid body");
     }
     const result = await inventoryAdminService.adjustStockBalance(
+      parsed.data,
+      req.user!
+    );
+    sendSuccess(res, result);
+  })
+);
+
+router.get(
+  "/invoices",
+  requireAdminOrPermission(Permission.INVENTORY_VIEW),
+  asyncHandler(async (req, res) => {
+    const parsed = invoiceListQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      throw new BadRequestError(parsed.error.errors[0]?.message ?? "Invalid query");
+    }
+    const { items, pagination } = await inventoryAdminService.listInvoiceMovements(
+      parsed.data
+    );
+    sendSuccess(res, items, 200, { pagination });
+  })
+);
+
+router.get(
+  "/invoices/search",
+  requireAdminOrPermission(Permission.INVENTORY_VIEW),
+  asyncHandler(async (req, res) => {
+    const parsed = invoiceLookupQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      throw new BadRequestError(parsed.error.errors[0]?.message ?? "Invalid query");
+    }
+    const { items, pagination } = await inventoryAdminService.searchMovementsForInvoiceFix(
+      parsed.data
+    );
+    sendSuccess(res, items, 200, { pagination });
+  })
+);
+
+router.patch(
+  "/movements/:movementId/invoice",
+  requireAdminOrPermission(Permission.INVENTORY_ADJUST),
+  asyncHandler(async (req, res) => {
+    const parsed = updateMovementInvoiceSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new BadRequestError(parsed.error.errors[0]?.message ?? "Invalid body");
+    }
+    const result = await inventoryAdminService.updateMovementInvoice(
+      String(req.params.movementId),
       parsed.data,
       req.user!
     );

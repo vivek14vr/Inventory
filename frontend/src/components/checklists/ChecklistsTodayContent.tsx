@@ -3,16 +3,23 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
-import { Button } from "@/components/ui/Button";
+import { Button, ButtonLink } from "@/components/ui/Button";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { Panel } from "@/components/ui/Panel";
+import { useNotifications } from "@/contexts/NotificationContext";
 import type { TodayChecklist } from "@/types/checklist";
+import { formatDueTime } from "@/lib/checklists/formatDueTime";
 
-export function ChecklistsTodayContent() {
+type ChecklistsTodayContentProps = {
+  notificationsHref: string;
+};
+
+export function ChecklistsTodayContent({ notificationsHref }: ChecklistsTodayContentProps) {
   const [checklists, setChecklists] = useState<TodayChecklist[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busyTask, setBusyTask] = useState<string | null>(null);
+  const { unreadCount } = useNotifications();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -66,9 +73,24 @@ export function ChecklistsTodayContent() {
           <h1 className="text-2xl font-bold text-stone-900 sm:text-3xl">Today&apos;s checklist</h1>
           <p className="mt-2 text-base text-stone-500">{today}</p>
         </div>
-        <Button variant="secondary" size="lg" onClick={() => void load()} loading={loading}>
-          Refresh
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <ButtonLink
+            href={notificationsHref}
+            variant="secondary"
+            size="lg"
+            className="relative"
+          >
+            Notification history
+            {unreadCount > 0 && (
+              <span className="ml-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-600 px-1.5 text-xs font-bold text-white">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
+          </ButtonLink>
+          <Button variant="secondary" size="lg" onClick={() => void load()} loading={loading}>
+            Refresh
+          </Button>
+        </div>
       </div>
 
       <Alert message={error} />
@@ -95,7 +117,9 @@ export function ChecklistsTodayContent() {
                 className={`rounded-full px-3 py-1 text-sm font-bold ${
                   checklist.completedCount === checklist.totalCount
                     ? "bg-green-100 text-green-800"
-                    : "bg-amber-100 text-amber-800"
+                    : checklist.isPastDue
+                      ? "bg-amber-100 text-amber-800"
+                      : "bg-stone-100 text-stone-700"
                 }`}
               >
                 {checklist.completedCount}/{checklist.totalCount}
@@ -105,6 +129,7 @@ export function ChecklistsTodayContent() {
             <ul className="space-y-3">
               {checklist.tasks.map((task) => {
                 const busy = busyTask === `${checklist.id}:${task.id}`;
+                const showPastDue = !task.completed && task.isPastDue;
                 return (
                   <li key={task.id}>
                     <button
@@ -116,24 +141,46 @@ export function ChecklistsTodayContent() {
                       className={`flex w-full min-h-14 items-center gap-4 rounded-2xl border-2 px-4 py-3 text-left transition active:scale-[0.99] ${
                         task.completed
                           ? "border-green-300 bg-green-50"
-                          : "border-stone-200 bg-white hover:border-orange-300 hover:bg-orange-50"
+                          : showPastDue
+                            ? "border-amber-300 bg-amber-50/60 hover:border-amber-400"
+                            : "border-stone-200 bg-white hover:border-orange-300 hover:bg-orange-50"
                       }`}
                     >
                       <span
                         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg font-bold ${
                           task.completed
                             ? "bg-green-600 text-white"
-                            : "border-2 border-stone-300 bg-white text-stone-400"
+                            : showPastDue
+                              ? "border-2 border-amber-400 bg-amber-100 text-amber-700"
+                              : "border-2 border-stone-300 bg-white text-stone-400"
                         }`}
                       >
                         {task.completed ? "✓" : ""}
                       </span>
-                      <span
-                        className={`flex-1 text-base font-semibold ${
-                          task.completed ? "text-green-900 line-through" : "text-stone-900"
-                        }`}
-                      >
-                        {task.title}
+                      <span className="min-w-0 flex-1">
+                        <span
+                          className={`block text-base font-semibold ${
+                            task.completed ? "text-green-900 line-through" : "text-stone-900"
+                          }`}
+                        >
+                          {task.title}
+                        </span>
+                        {task.dueTime && !task.completed && (
+                          <span
+                            className={`mt-0.5 block text-sm font-medium ${
+                              showPastDue ? "text-amber-800" : "text-indigo-700"
+                            }`}
+                          >
+                            {showPastDue
+                              ? `Past due · was ${formatDueTime(task.dueTime)}`
+                              : `Complete before ${formatDueTime(task.dueTime)}`}
+                          </span>
+                        )}
+                        {task.dueTime && task.completed && (
+                          <span className="mt-0.5 block text-xs text-green-700">
+                            Due {formatDueTime(task.dueTime)}
+                          </span>
+                        )}
                       </span>
                       {busy && (
                         <span className="text-sm text-stone-400">Saving…</span>

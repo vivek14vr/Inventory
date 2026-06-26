@@ -15,6 +15,8 @@ export const stockInSchema = z.object({
   productId: z.string().min(1, "Product is required"),
   quantity: z.coerce.number().int().min(1, "Quantity must be at least 1"),
   transferId: z.string().optional(),
+  clientName: z.string().max(200).optional(),
+  invoiceNumber: z.string().max(100).optional(),
   notes: z.string().max(500).optional(),
 });
 
@@ -38,21 +40,12 @@ export const stockOutSchema = z
         path: ["destinationWarehouseId"],
       });
     }
-    if (data.dispatchType === DispatchType.DIRECT_SELLING) {
-      if (!data.clientName?.trim()) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Client name is required for direct selling",
-          path: ["clientName"],
-        });
-      }
-      if (!data.invoiceNumber?.trim()) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Invoice number is required for direct selling",
-          path: ["invoiceNumber"],
-        });
-      }
+    if (data.dispatchType === DispatchType.DIRECT_SELLING && !data.clientName?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Client name is required for direct selling",
+        path: ["clientName"],
+      });
     }
   });
 

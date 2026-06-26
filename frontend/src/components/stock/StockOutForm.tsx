@@ -7,6 +7,12 @@ import { SelectionGrid } from "@/components/ui/SelectionGrid";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { api, ApiError } from "@/lib/api/client";
+import {
+  formatEnteredQuantityPreview,
+  formatStockUnitHint,
+  stockUnitQuestionLabel,
+  stockUnitsToBase,
+} from "@/lib/products/productUnits";
 import type { Brand, Product, Warehouse } from "@/types/master";
 
 type StockOutStep =
@@ -22,6 +28,11 @@ type StockOutFormProps = {
   defaultWarehouseId?: string;
   allowedWarehouseIds?: string[];
   defaultDispatchType?: "TRANSFER" | "DIRECT_SELLING";
+  /**
+   * "sell" = direct selling only, "transfer" = warehouse-to-warehouse only,
+   * "both" = let the user choose (original behaviour).
+   */
+  mode?: "sell" | "transfer" | "both";
   onSuccess?: (message: string) => void;
 };
 
@@ -30,9 +41,12 @@ export function StockOutForm({
   defaultWarehouseId = "",
   allowedWarehouseIds,
   defaultDispatchType = "DIRECT_SELLING",
+  mode = "both",
   onSuccess,
 }: StockOutFormProps) {
   const pickWarehouse = shouldPickWarehouse({ requireWarehouse, allowedWarehouseIds });
+  const forcedDispatch: "TRANSFER" | "DIRECT_SELLING" | "" =
+    mode === "sell" ? "DIRECT_SELLING" : mode === "transfer" ? "TRANSFER" : "";
 
   const [step, setStep] = useState<StockOutStep>(() =>
     pickWarehouse ? "warehouse" : "brand"
@@ -50,7 +64,7 @@ export function StockOutForm({
   const [productId, setProductId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [dispatchType, setDispatchType] = useState<"TRANSFER" | "DIRECT_SELLING" | "">(
-    ""
+    forcedDispatch
   );
   const [destinationWarehouseId, setDestinationWarehouseId] = useState("");
   const [clientName, setClientName] = useState("");
@@ -123,7 +137,7 @@ export function StockOutForm({
     setWarehouseId(id);
     setBrandId("");
     setProductId("");
-    setDispatchType("");
+    setDispatchType(forcedDispatch);
     setDestinationWarehouseId("");
     setStep("brand");
   }
@@ -131,16 +145,24 @@ export function StockOutForm({
   function selectBrand(id: string) {
     setBrandId(id);
     setProductId("");
-    setDispatchType("");
+    setDispatchType(forcedDispatch);
     setDestinationWarehouseId("");
     setStep("product");
   }
 
   function selectProduct(id: string) {
     setProductId(id);
-    setDispatchType("");
     setDestinationWarehouseId("");
-    setStep("dispatch");
+    if (mode === "sell") {
+      setDispatchType("DIRECT_SELLING");
+      setStep("confirm");
+    } else if (mode === "transfer") {
+      setDispatchType("TRANSFER");
+      setStep("destination");
+    } else {
+      setDispatchType("");
+      setStep("dispatch");
+    }
   }
 
   function selectDispatch(type: "TRANSFER" | "DIRECT_SELLING") {
@@ -164,14 +186,22 @@ export function StockOutForm({
       if (dispatchType === "TRANSFER") {
         setDestinationWarehouseId("");
         setStep("destination");
-      } else {
+      } else if (mode === "both") {
         setDispatchType("");
         setStep("dispatch");
+      } else {
+        setProductId("");
+        setStep("product");
       }
     } else if (step === "destination") {
       setDestinationWarehouseId("");
-      setDispatchType("");
-      setStep("dispatch");
+      if (mode === "both") {
+        setDispatchType("");
+        setStep("dispatch");
+      } else {
+        setProductId("");
+        setStep("product");
+      }
     } else if (step === "dispatch") {
       setProductId("");
       setDispatchType("");
@@ -192,7 +222,7 @@ export function StockOutForm({
     setBrandId("");
     setProductId("");
     setQuantity("");
-    setDispatchType("");
+    setDispatchType(forcedDispatch);
     setDestinationWarehouseId("");
     setClientName("");
     setInvoiceNumber("");
@@ -212,16 +242,21 @@ export function StockOutForm({
     setSubmitting(true);
     const type = dispatchType || defaultDispatchType;
     try {
+      const enteredQty = parseInt(quantity, 10);
+      const baseQty = stockUnitsToBase(enteredQty, selectedProduct);
       const result = await api.stock.stockOut({
         ...(resolvedWarehouseId ? { warehouseId: resolvedWarehouseId } : {}),
         brandId,
         productId,
-        quantity: parseInt(quantity, 10),
+        quantity: baseQty,
         dispatchType: type,
         destinationWarehouseId:
           type === "TRANSFER" ? destinationWarehouseId : undefined,
         clientName: type === "DIRECT_SELLING" ? clientName : undefined,
-        invoiceNumber: type === "DIRECT_SELLING" ? invoiceNumber : undefined,
+        invoiceNumber:
+          type === "DIRECT_SELLING" && invoiceNumber.trim()
+            ? invoiceNumber.trim()
+            : undefined,
         notes: notes || undefined,
       });
       const msg =
@@ -251,7 +286,7 @@ export function StockOutForm({
       : []),
     { label: "Brand", value: selectedBrand?.name },
     { label: "Product", value: selectedProduct?.name },
-    ...(dispatchLabel ? [{ label: "Type", value: dispatchLabel }] : []),
+    ...(mode === "both" && dispatchLabel ? [{ label: "Type", value: dispatchLabel }] : []),
     ...(selectedDestination
       ? [{ label: "To", value: selectedDestination.name }]
       : []),
@@ -302,7 +337,14 @@ export function StockOutForm({
           subtitle={selectedBrand ? `Brand: ${selectedBrand.name}` : undefined}
           items={products
             .filter((p) => p.isActive)
-            .map((p) => ({ id: p.id, title: p.name }))}
+            .map((p) => ({
+              id: p.id,
+              title: p.name,
+              subtitle:
+                p.unitsPerStockUnit > 1
+                  ? `1 ${p.stockUnit} = ${p.unitsPerStockUnit} units`
+                  : undefined,
+            }))}
           onSelect={selectProduct}
           onBack={goBack}
           loading={loadingProducts}
@@ -381,8 +423,13 @@ export function StockOutForm({
             <div className="mt-5 space-y-4">
               <div>
                 <label className="block text-base font-semibold text-stone-700">
-                  How many units?
+                  {stockUnitQuestionLabel(selectedProduct)}
                 </label>
+                {formatStockUnitHint(selectedProduct) && (
+                  <p className="mt-1 text-sm text-orange-700">
+                    {formatStockUnitHint(selectedProduct)}
+                  </p>
+                )}
                 <input
                   type="number"
                   min={1}
@@ -392,6 +439,18 @@ export function StockOutForm({
                   className="form-input mt-2 text-2xl font-bold"
                   placeholder="0"
                 />
+                {quantity &&
+                  formatEnteredQuantityPreview(
+                    parseInt(quantity, 10),
+                    selectedProduct
+                  ) && (
+                    <p className="mt-2 text-sm font-semibold text-stone-600">
+                      {formatEnteredQuantityPreview(
+                        parseInt(quantity, 10),
+                        selectedProduct
+                      )}
+                    </p>
+                  )}
               </div>
 
               {dispatchType === "DIRECT_SELLING" && (
@@ -409,10 +468,9 @@ export function StockOutForm({
                   </div>
                   <div>
                     <label className="block text-base font-semibold text-stone-700">
-                      Invoice number
+                      Invoice number (optional)
                     </label>
                     <input
-                      required
                       value={invoiceNumber}
                       onChange={(e) => setInvoiceNumber(e.target.value)}
                       className="form-input mt-2"

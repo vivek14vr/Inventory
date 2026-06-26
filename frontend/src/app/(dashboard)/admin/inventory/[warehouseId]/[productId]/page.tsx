@@ -155,13 +155,14 @@ export default function InventoryItemDetailPage() {
               <DataTableTh>Date</DataTableTh>
               <DataTableTh>Type</DataTableTh>
               <DataTableTh>Details</DataTableTh>
+              <DataTableTh>Updated by</DataTableTh>
               <DataTableTh align="right">Change</DataTableTh>
               <DataTableTh align="right">Balance after</DataTableTh>
             </DataTableHead>
             <DataTableBody>
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-zinc-500">
+                  <td colSpan={6} className="px-4 py-10 text-center text-zinc-500">
                     No movements recorded for this item at this warehouse
                   </td>
                 </tr>
@@ -190,6 +191,9 @@ export default function InventoryItemDetailPage() {
                       {row.notes && row.notes !== row.description && (
                         <span className="mt-0.5 block text-xs text-zinc-500">{row.notes}</span>
                       )}
+                    </DataTableTd>
+                    <DataTableTd className="text-zinc-700">
+                      {row.createdBy?.name ?? "—"}
                     </DataTableTd>
                     <DataTableTd
                       align="right"

@@ -3,13 +3,20 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
+import { ButtonSelect } from "@/components/ui/ButtonSelect";
 import { Pagination } from "@/components/ui/Pagination";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { usePagination } from "@/hooks/usePagination";
 import type { PaginationMeta } from "@/types/pagination";
 import type { Brand, Product } from "@/types/master";
 
-const emptyForm = { name: "", brandId: "", editId: null as string | null };
+const emptyForm = {
+  name: "",
+  brandId: "",
+  stockUnit: "unit",
+  unitsPerStockUnit: "1",
+  editId: null as string | null,
+};
 
 export default function AdminProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -63,12 +70,16 @@ export default function AdminProductsPage() {
         await api.products.update(form.editId, {
           name: form.name,
           brandId: form.brandId,
+          stockUnit: form.stockUnit.trim() || "unit",
+          unitsPerStockUnit: parseInt(form.unitsPerStockUnit, 10) || 1,
         });
         setSuccess("Product updated");
       } else {
         await api.products.create({
           name: form.name,
           brandId: form.brandId,
+          stockUnit: form.stockUnit.trim() || "unit",
+          unitsPerStockUnit: parseInt(form.unitsPerStockUnit, 10) || 1,
         });
         setSuccess("Product created");
       }
@@ -97,7 +108,8 @@ export default function AdminProductsPage() {
       <div>
         <h1 className="text-2xl font-semibold text-zinc-900">Products</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Unique inventory key: <strong>Product Name + Brand Name</strong>
+          Unique key: <strong>Product Name + Brand Name</strong>. Set a stock unit (e.g. Carton)
+          and how many pieces it contains.
         </p>
       </div>
 
@@ -115,24 +127,19 @@ export default function AdminProductsPage() {
             className="ml-2 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm"
           />
         </div>
-        <div>
-          <label className="text-sm font-medium text-zinc-700">Filter by brand</label>
-          <select
-            value={filterBrandId}
-            onChange={(e) => {
-              setFilterBrandId(e.target.value);
-              resetPage();
-            }}
-            className="ml-2 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm"
-          >
-            <option value="">All brands</option>
-            {brands.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        <ButtonSelect
+          label="Filter by brand"
+          value={filterBrandId}
+          onChange={(v) => {
+            setFilterBrandId(v);
+            resetPage();
+          }}
+          size="sm"
+          options={[
+            { value: "", label: "All brands" },
+            ...brands.map((b) => ({ value: b.id, label: b.name })),
+          ]}
+        />
         <button
           onClick={() => {
             setShowForm(!showForm);
@@ -164,21 +171,46 @@ export default function AdminProductsPage() {
                 placeholder="e.g. 200ml Glass"
               />
             </div>
+            <ButtonSelect
+              label="Brand"
+              value={form.brandId}
+              onChange={(v) => setForm({ ...form, brandId: v })}
+              options={brands.map((b) => ({ value: b.id, label: b.name }))}
+              emptyMessage="No brands available"
+            />
             <div>
-              <label className="block text-sm font-medium text-zinc-700">Brand</label>
-              <select
+              <label className="block text-sm font-medium text-zinc-700">
+                Stock unit name
+              </label>
+              <input
                 required
-                value={form.brandId}
-                onChange={(e) => setForm({ ...form, brandId: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-              >
-                <option value="">Select brand</option>
-                {brands.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
+                value={form.stockUnit}
+                onChange={(e) => setForm({ ...form, stockUnit: e.target.value })}
+                className="form-input mt-1"
+                placeholder="e.g. Carton, Box, Piece"
+              />
+              <p className="mt-1 text-xs text-zinc-500">
+                What you count when stocking in or out (carton, box, etc.)
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-zinc-700">
+                Units per stock unit
+              </label>
+              <input
+                type="number"
+                min={1}
+                required
+                value={form.unitsPerStockUnit}
+                onChange={(e) =>
+                  setForm({ ...form, unitsPerStockUnit: e.target.value })
+                }
+                className="form-input mt-1"
+                placeholder="30"
+              />
+              <p className="mt-1 text-xs text-zinc-500">
+                e.g. 30 means 1 carton = 30 individual units in inventory
+              </p>
             </div>
           </div>
           <button
@@ -200,6 +232,7 @@ export default function AdminProductsPage() {
             <tr>
               <th className="px-4 py-3">Product</th>
               <th className="px-4 py-3">Brand</th>
+              <th className="px-4 py-3">Stock unit</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3"></th>
             </tr>
@@ -207,13 +240,13 @@ export default function AdminProductsPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-zinc-500">
+                <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">
                   Loading…
                 </td>
               </tr>
             ) : products.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-zinc-500">
+                <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">
                   No products
                 </td>
               </tr>
@@ -222,6 +255,11 @@ export default function AdminProductsPage() {
                 <tr key={p.id} className="border-t border-zinc-100">
                   <td className="px-4 py-3 font-medium">{p.name}</td>
                   <td className="px-4 py-3 text-zinc-600">{p.brand.name}</td>
+                  <td className="px-4 py-3 text-zinc-600">
+                    {p.unitsPerStockUnit > 1
+                      ? `1 ${p.stockUnit} = ${p.unitsPerStockUnit} units`
+                      : "Per unit"}
+                  </td>
                   <td className="px-4 py-3">
                     <StatusBadge active={p.isActive} />
                   </td>
@@ -231,6 +269,8 @@ export default function AdminProductsPage() {
                         setForm({
                           name: p.name,
                           brandId: p.brandId,
+                          stockUnit: p.stockUnit,
+                          unitsPerStockUnit: String(p.unitsPerStockUnit),
                           editId: p.id,
                         });
                         setShowForm(true);

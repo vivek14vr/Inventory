@@ -4,6 +4,7 @@ export interface IChecklistTask {
   _id: Types.ObjectId;
   title: string;
   sortOrder: number;
+  dueTime?: string;
 }
 
 export interface IChecklist extends Document {
@@ -21,6 +22,7 @@ const checklistTaskSchema = new Schema<IChecklistTask>(
   {
     title: { type: String, required: true, trim: true },
     sortOrder: { type: Number, default: 0 },
+    dueTime: { type: String, trim: true },
   },
   { _id: true }
 );

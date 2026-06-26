@@ -8,8 +8,9 @@ import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { Panel } from "@/components/ui/Panel";
 import type { Checklist, ChecklistProgress } from "@/types/checklist";
 import type { PublicUser } from "@/types/auth";
+import { formatDueTime } from "@/lib/checklists/formatDueTime";
 
-type TaskDraft = { title: string };
+type TaskDraft = { title: string; dueTime: string };
 
 export function ChecklistsAdminContent() {
   const [checklists, setChecklists] = useState<Checklist[]>([]);
@@ -22,7 +23,7 @@ export function ChecklistsAdminContent() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [assignedUserIds, setAssignedUserIds] = useState<string[]>([]);
-  const [tasks, setTasks] = useState<TaskDraft[]>([{ title: "" }]);
+  const [tasks, setTasks] = useState<TaskDraft[]>([{ title: "", dueTime: "" }]);
 
   const [progressChecklistId, setProgressChecklistId] = useState<string | null>(null);
   const [progressDate, setProgressDate] = useState(
@@ -79,11 +80,11 @@ export function ChecklistsAdminContent() {
   }
 
   function addTaskRow() {
-    setTasks((prev) => [...prev, { title: "" }]);
+    setTasks((prev) => [...prev, { title: "", dueTime: "" }]);
   }
 
-  function updateTask(index: number, value: string) {
-    setTasks((prev) => prev.map((t, i) => (i === index ? { title: value } : t)));
+  function updateTask(index: number, patch: Partial<TaskDraft>) {
+    setTasks((prev) => prev.map((t, i) => (i === index ? { ...t, ...patch } : t)));
   }
 
   function removeTask(index: number) {
@@ -96,7 +97,12 @@ export function ChecklistsAdminContent() {
     setError("");
     setSuccess("");
     try {
-      const cleanTasks = tasks.map((t) => t.title.trim()).filter(Boolean);
+      const cleanTasks = tasks
+        .map((t) => ({
+          title: t.title.trim(),
+          dueTime: t.dueTime || undefined,
+        }))
+        .filter((t) => t.title);
       if (!title.trim()) throw new Error("Checklist title is required");
       if (assignedUserIds.length === 0) throw new Error("Select at least one user");
       if (cleanTasks.length === 0) throw new Error("Add at least one task");
@@ -105,14 +111,14 @@ export function ChecklistsAdminContent() {
         title: title.trim(),
         description: description.trim() || undefined,
         assignedUserIds,
-        tasks: cleanTasks.map((t) => ({ title: t })),
+        tasks: cleanTasks,
       });
 
       setSuccess("Checklist created and assigned.");
       setTitle("");
       setDescription("");
       setAssignedUserIds([]);
-      setTasks([{ title: "" }]);
+      setTasks([{ title: "", dueTime: "" }]);
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Failed to create checklist");
@@ -170,7 +176,7 @@ export function ChecklistsAdminContent() {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="form-input mt-2"
-              placeholder="Tasks to finish before 10 AM"
+              placeholder="Tasks to finish before opening"
             />
           </div>
 
@@ -209,20 +215,43 @@ export function ChecklistsAdminContent() {
 
           <div>
             <label className="block text-base font-semibold text-stone-700">Tasks</label>
-            <div className="mt-3 space-y-2">
+            <p className="mt-1 text-sm text-stone-500">
+              Set an optional deadline per task. Workers can still complete after the time.
+            </p>
+            <div className="mt-3 space-y-3">
               {tasks.map((task, index) => (
-                <div key={index} className="flex gap-2">
-                  <input
-                    value={task.title}
-                    onChange={(e) => updateTask(index, e.target.value)}
-                    className="form-input flex-1"
-                    placeholder={`Task ${index + 1}`}
-                  />
+                <div
+                  key={index}
+                  className="flex flex-col gap-2 rounded-xl border border-stone-200 bg-stone-50/50 p-3 sm:flex-row sm:items-end"
+                >
+                  <div className="flex-1">
+                    <label className="text-xs font-semibold text-stone-500">
+                      Task {index + 1}
+                    </label>
+                    <input
+                      value={task.title}
+                      onChange={(e) => updateTask(index, { title: e.target.value })}
+                      className="form-input mt-1"
+                      placeholder={`Task ${index + 1}`}
+                    />
+                  </div>
+                  <div className="sm:w-40">
+                    <label className="text-xs font-semibold text-stone-500">
+                      Complete before
+                    </label>
+                    <input
+                      type="time"
+                      value={task.dueTime}
+                      onChange={(e) => updateTask(index, { dueTime: e.target.value })}
+                      className="form-date mt-1 w-full"
+                    />
+                  </div>
                   {tasks.length > 1 && (
                     <Button
                       type="button"
                       variant="ghost"
                       onClick={() => removeTask(index)}
+                      className="sm:mb-0.5"
                     >
                       Remove
                     </Button>
@@ -264,6 +293,9 @@ export function ChecklistsAdminContent() {
                   </p>
                   <p className="text-sm text-stone-500">
                     {c.tasks.length} tasks · {c.assignedUserIds.length} users
+                    {c.tasks.some((t) => t.dueTime)
+                      ? ` · ${c.tasks.filter((t) => t.dueTime).length} with deadlines`
+                      : ""}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -313,7 +345,13 @@ export function ChecklistsAdminContent() {
               {progress.users.map((u) => (
                 <div
                   key={u.id}
-                  className="rounded-xl border border-stone-200 bg-stone-50/50 p-4"
+                  className={`rounded-xl border p-4 ${
+                    u.status === "completed"
+                      ? "border-green-200 bg-green-50/50"
+                      : u.status === "overdue"
+                        ? "border-amber-200 bg-amber-50/50"
+                        : "border-stone-200 bg-stone-50/50"
+                  }`}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
@@ -323,26 +361,90 @@ export function ChecklistsAdminContent() {
                         {u.warehouse ? ` · ${u.warehouse.name}` : ""}
                       </p>
                     </div>
-                    <span
-                      className={`rounded-full px-3 py-1 text-sm font-bold ${
-                        u.completedCount === u.totalCount
-                          ? "bg-green-100 text-green-800"
-                          : "bg-amber-100 text-amber-800"
-                      }`}
-                    >
-                      {u.completedCount}/{u.totalCount}
-                    </span>
-                  </div>
-                  <ul className="mt-3 space-y-1 text-sm">
-                    {u.tasks.map((t) => (
-                      <li
-                        key={t.id}
-                        className={t.completed ? "text-green-700" : "text-stone-600"}
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ${
+                          u.status === "completed"
+                            ? "bg-green-100 text-green-800"
+                            : u.status === "overdue"
+                              ? "bg-amber-100 text-amber-800"
+                              : "bg-stone-200 text-stone-700"
+                        }`}
                       >
-                        {t.completed ? "✓" : "○"} {t.title}
-                      </li>
-                    ))}
-                  </ul>
+                        {u.status === "completed"
+                          ? "Done"
+                          : u.status === "overdue"
+                            ? "Overdue"
+                            : "Pending"}
+                      </span>
+                      <span className="rounded-full bg-white px-3 py-1 text-sm font-bold text-stone-800 ring-1 ring-stone-200">
+                        {u.completedCount}/{u.totalCount}
+                      </span>
+                    </div>
+                  </div>
+
+                  {u.completedTasks.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-xs font-bold uppercase tracking-wide text-green-800">
+                        Completed
+                      </p>
+                      <ul className="mt-1 space-y-1 text-sm text-green-800">
+                        {u.completedTasks.map((t) => (
+                          <li key={t.title}>
+                            ✓ {t.title}
+                            {t.dueTime && (
+                              <span className="ml-1 text-xs text-green-700">
+                                (due {formatDueTime(t.dueTime)})
+                              </span>
+                            )}
+                            {t.completedAt && (
+                              <span className="ml-1 text-xs text-green-700">
+                                at{" "}
+                                {new Date(t.completedAt).toLocaleTimeString("en-IN", {
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                  hour12: true,
+                                })}
+                              </span>
+                            )}
+                            {t.completedLate && (
+                              <span className="ml-1 text-xs font-semibold text-amber-700">
+                                · after deadline
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {u.pendingTasks.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-xs font-bold uppercase tracking-wide text-stone-600">
+                        Pending
+                      </p>
+                      <ul className="mt-1 space-y-1 text-sm text-stone-600">
+                        {u.pendingTasks.map((t) => (
+                          <li
+                            key={t.title}
+                            className={t.isPastDue ? "font-semibold text-amber-800" : ""}
+                          >
+                            ○ {t.title}
+                            {t.dueTime && (
+                              <span
+                                className={`ml-1 text-xs ${
+                                  t.isPastDue ? "text-amber-700" : "text-stone-500"
+                                }`}
+                              >
+                                · due {formatDueTime(t.dueTime)}
+                                {t.isPastDue ? " (overdue)" : ""}
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

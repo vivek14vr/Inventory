@@ -242,14 +242,26 @@ export const api = {
 
       return items;
     },
-    create: (data: { name: string; brandId: string; isActive?: boolean }) =>
+    create: (data: {
+      name: string;
+      brandId: string;
+      stockUnit?: string;
+      unitsPerStockUnit?: number;
+      isActive?: boolean;
+    }) =>
       apiClient<Product>("/products", {
         method: "POST",
         body: JSON.stringify(data),
       }),
     update: (
       id: string,
-      data: Partial<{ name: string; brandId: string; isActive: boolean }>
+      data: Partial<{
+        name: string;
+        brandId: string;
+        stockUnit: string;
+        unitsPerStockUnit: number;
+        isActive: boolean;
+      }>
     ) =>
       apiClient<Product>(`/products/${id}`, {
         method: "PATCH",
@@ -267,6 +279,8 @@ export const api = {
       productId: string;
       quantity: number;
       transferId?: string;
+      clientName?: string;
+      invoiceNumber?: string;
       notes?: string;
     }) =>
       apiClient<{ movement: StockMovement; balance: number; transferId?: string }>(
@@ -341,6 +355,22 @@ export const api = {
         quantity: number;
         changed: boolean;
       }>("/inventory/stock", {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    listInvoices: (params?: PaginationParams & { search?: string }) =>
+      apiClientPaginated<StockMovement>("/inventory/invoices", params),
+    searchInvoices: (params: PaginationParams & { search: string }) =>
+      apiClientPaginated<StockMovement>("/inventory/invoices/search", params),
+    updateMovementInvoice: (
+      movementId: string,
+      data: {
+        invoiceNumber?: string;
+        clientName?: string;
+        markLastWorked?: boolean;
+      }
+    ) =>
+      apiClient<StockMovement>(`/inventory/movements/${movementId}/invoice`, {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
@@ -513,7 +543,7 @@ export const api = {
       title: string;
       description?: string;
       assignedUserIds: string[];
-      tasks: Array<{ title: string; sortOrder?: number }>;
+      tasks: Array<{ title: string; sortOrder?: number; dueTime?: string }>;
     }) =>
       apiClient<import("@/types/checklist").Checklist>("/checklists", {
         method: "POST",
@@ -525,7 +555,7 @@ export const api = {
         title: string;
         description: string;
         assignedUserIds: string[];
-        tasks: Array<{ title: string; sortOrder?: number }>;
+        tasks: Array<{ title: string; sortOrder?: number; dueTime?: string }>;
         isActive: boolean;
       }>
     ) =>
@@ -543,6 +573,30 @@ export const api = {
         `/checklists/${checklistId}/tasks/${taskId}/uncomplete`,
         { method: "POST", body: JSON.stringify(date ? { date } : {}) }
       ),
+  },
+
+  notifications: {
+    list: (params?: { resolved?: boolean; page?: number; limit?: number }) =>
+      apiClientPaginated<import("@/types/notification").AppNotification>(
+        "/notifications",
+        params
+      ),
+    unreadCount: () =>
+      apiClient<{ count: number }>("/notifications/unread-count"),
+    sync: (date?: string) =>
+      apiClient<import("@/types/notification").NotificationSyncResult>(
+        "/notifications/sync",
+        { method: "POST", body: JSON.stringify(date ? { date } : {}) }
+      ),
+    markRead: (id: string) =>
+      apiClient<import("@/types/notification").AppNotification>(
+        `/notifications/${id}/read`,
+        { method: "PATCH" }
+      ),
+    markAllRead: () =>
+      apiClient<{ updated: number }>("/notifications/read-all", {
+        method: "POST",
+      }),
   },
 
   permissions: {

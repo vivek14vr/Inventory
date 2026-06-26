@@ -37,8 +37,40 @@ export type StockSummary = {
   }>;
 };
 
+export type StockLocationLastChange = {
+  type: "STOCK_IN" | "STOCK_OUT";
+  quantity: number;
+  createdAt: string;
+};
+
+export type StockProductLocation = {
+  warehouseId: string;
+  warehouseName: string;
+  warehouseCode: string;
+  quantity: number;
+  updatedAt: string;
+  lastChange?: StockLocationLastChange | null;
+};
+
+export type StockProductRow = {
+  productId: string;
+  productName: string;
+  brandId: string;
+  brandName: string;
+  locations: StockProductLocation[];
+  totalQuantity: number;
+};
+
+export type StockWarehouseColumn = {
+  warehouseId: string;
+  name: string;
+  code: string;
+};
+
 export type StockResponse = {
   items: StockRow[];
+  products: StockProductRow[];
+  warehouses: StockWarehouseColumn[];
   summary: StockSummary;
 };
 
@@ -61,6 +93,7 @@ export type StockItemLedgerRow = {
   invoiceNumber?: string;
   notes?: string;
   transferId?: string;
+  createdBy?: { id: string; name: string };
   createdAt: string;
 };
 

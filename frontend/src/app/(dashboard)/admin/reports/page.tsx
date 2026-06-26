@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
+import { ButtonSelect } from "@/components/ui/ButtonSelect";
 import type { Brand, Product, Warehouse } from "@/types/master";
 import type { ReportFilters, ReportResult, ReportType } from "@/types/reports";
 
@@ -150,6 +151,7 @@ export default function AdminReportsPage() {
   }
 
   const columns = getColumns(reportType, result);
+  const numericCols = numericColumns(columns, result);
 
   return (
     <div className="space-y-6 text-zinc-900">
@@ -162,20 +164,12 @@ export default function AdminReportsPage() {
       </div>
 
       <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-6">
-        <div>
-          <label className="block text-sm font-medium text-zinc-700">Report type</label>
-          <select
-            value={reportType}
-            onChange={(e) => setReportType(e.target.value as ReportType)}
-            className="mt-1 w-full max-w-md rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900"
-          >
-            {REPORT_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <ButtonSelect
+          label="Report type"
+          value={reportType}
+          onChange={(v) => setReportType(v as ReportType)}
+          options={REPORT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+        />
 
         <div className="flex flex-wrap gap-3">
           <FilterSelect
@@ -273,7 +267,7 @@ export default function AdminReportsPage() {
                   dateFrom: e.target.value || undefined,
                 })
               }
-              className="mt-1 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm"
+              className="form-date mt-1"
             />
           </div>
           <div>
@@ -287,7 +281,7 @@ export default function AdminReportsPage() {
                   dateTo: e.target.value || undefined,
                 })
               }
-              className="mt-1 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm"
+              className="form-date mt-1"
             />
           </div>
           {REPORT_TYPES_WITH_DATES.includes(reportType) && (
@@ -313,18 +307,33 @@ export default function AdminReportsPage() {
       <Alert message={error} />
 
       {(result || loading) && (
-        <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
-          <p className="border-b border-zinc-200 px-4 py-3 text-sm text-zinc-600">
-            {loading
-              ? "Updating report…"
-              : `${result?.rows.length ?? 0} row(s)${result?.groupBy ? ` · grouped by ${result.groupBy}` : ""}`}
+        <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
+          <p className="flex items-center gap-2 border-b border-stone-200 bg-stone-50/60 px-5 py-3.5 text-sm font-semibold text-stone-700">
+            {loading ? (
+              "Updating report…"
+            ) : (
+              <>
+                <span className="rounded-lg bg-orange-100 px-2.5 py-1 text-sm font-bold text-orange-800">
+                  {result?.rows.length ?? 0}
+                </span>
+                <span>row{result?.rows.length === 1 ? "" : "s"}</span>
+                {result?.groupBy && (
+                  <span className="text-stone-400">· grouped by {result.groupBy}</span>
+                )}
+              </>
+            )}
           </p>
           <div className="max-h-[32rem] overflow-auto">
             <table className="w-full text-left text-sm">
-              <thead className="sticky top-0 bg-zinc-50 text-xs uppercase text-zinc-500">
+              <thead className="sticky top-0 z-10 bg-orange-50 text-xs font-bold uppercase tracking-wide text-orange-800 shadow-[inset_0_-1px_0_rgba(0,0,0,0.08)]">
                 <tr>
                   {columns.map((col) => (
-                    <th key={col} className="px-4 py-3">
+                    <th
+                      key={col}
+                      className={`whitespace-nowrap px-5 py-3.5 ${
+                        numericCols.has(col) ? "text-right" : "text-left"
+                      }`}
+                    >
                       {formatHeader(col)}
                     </th>
                   ))}
@@ -335,16 +344,28 @@ export default function AdminReportsPage() {
                   <tr>
                     <td
                       colSpan={columns.length}
-                      className="px-4 py-8 text-center text-zinc-500"
+                      className="px-5 py-10 text-center text-base font-medium text-stone-400"
                     >
                       No data for selected filters
                     </td>
                   </tr>
                 ) : (
                   result!.rows.map((row, i) => (
-                    <tr key={i} className="border-t border-zinc-100">
-                      {columns.map((col) => (
-                        <td key={col} className="px-4 py-2 text-zinc-700">
+                    <tr
+                      key={i}
+                      className="border-t border-stone-100 transition-colors odd:bg-white even:bg-stone-50/50 hover:bg-orange-50/60"
+                    >
+                      {columns.map((col, colIndex) => (
+                        <td
+                          key={col}
+                          className={`px-5 py-3 ${
+                            numericCols.has(col)
+                              ? "text-right font-bold tabular-nums text-stone-900"
+                              : colIndex === 0
+                                ? "font-semibold text-stone-900"
+                                : "text-stone-600"
+                          }`}
+                        >
                           {formatCell(row[col])}
                         </td>
                       ))}
@@ -358,6 +379,21 @@ export default function AdminReportsPage() {
       )}
     </div>
   );
+}
+
+function numericColumns(
+  columns: string[],
+  result: ReportResult | null
+): Set<string> {
+  const numeric = new Set<string>();
+  if (!result?.rows.length) return numeric;
+  for (const col of columns) {
+    const sample = result.rows.find(
+      (row) => row[col] !== null && row[col] !== undefined && row[col] !== ""
+    )?.[col];
+    if (typeof sample === "number") numeric.add(col);
+  }
+  return numeric;
 }
 
 function getColumns(type: ReportType, result: ReportResult | null): string[] {
@@ -377,6 +413,7 @@ function formatHeader(key: string): string {
 
 function formatCell(value: unknown): string {
   if (value == null || value === "") return "—";
+  if (typeof value === "number") return value.toLocaleString();
   if (value instanceof Date || (typeof value === "string" && value.includes("T"))) {
     const d = new Date(String(value));
     return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString();
@@ -396,19 +433,12 @@ function FilterSelect({
   options: { value: string; label: string }[];
 }) {
   return (
-    <div>
-      <label className="block text-xs font-medium text-zinc-500">{label}</label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="mt-1 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-zinc-900"
-      >
-        {options.map((o) => (
-          <option key={o.value || "all"} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </div>
+    <ButtonSelect
+      label={label}
+      value={value}
+      onChange={onChange}
+      options={options}
+      size="sm"
+    />
   );
 }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
+import { SelectMenu } from "@/components/ui/SelectMenu";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { Pagination } from "@/components/ui/Pagination";
 import { usePagination } from "@/hooks/usePagination";
@@ -80,6 +81,19 @@ export function AuditPageContent() {
     resetPage();
   }
 
+  function clearFilters() {
+    setFilters({});
+    resetPage();
+  }
+
+  const activeFilterCount = [
+    filters.userId,
+    filters.action,
+    filters.entity,
+    filters.dateFrom,
+    filters.dateTo,
+  ].filter(Boolean).length;
+
   async function downloadPdf() {
     setDownloading(true);
     setError("");
@@ -155,62 +169,74 @@ export function AuditPageContent() {
         </div>
       )}
 
-      <div className="rounded-xl border border-zinc-200 bg-white p-4 sm:p-6">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div>
-            <label className="block text-sm font-medium text-zinc-700">User</label>
-            <select
-              value={filters.userId ?? ""}
-              onChange={(e) => updateFilter("userId", e.target.value || undefined)}
-              className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900"
-            >
-              <option value="">All users</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name} ({u.email})
-                </option>
-              ))}
-            </select>
+      <div className="rounded-xl border border-zinc-200 bg-white p-4 sm:p-5">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-zinc-700">Filters</h2>
+            {activeFilterCount > 0 && (
+              <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-bold text-orange-700">
+                {activeFilterCount}
+              </span>
+            )}
           </div>
+          {activeFilterCount > 0 && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-sm font-semibold text-orange-600 hover:text-orange-700"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <SelectMenu
+            label="User"
+            value={filters.userId ?? ""}
+            onChange={(v) => updateFilter("userId", v || undefined)}
+            options={[
+              { value: "", label: "All users" },
+              ...users.map((u) => ({
+                value: u.id,
+                label: u.name,
+                sublabel: u.email,
+              })),
+            ]}
+          />
+          <SelectMenu
+            label="Entity"
+            value={filters.entity ?? ""}
+            onChange={(v) => updateFilter("entity", v || undefined)}
+            options={ENTITY_OPTIONS.map((e) => ({
+              value: e,
+              label: e || "All entities",
+            }))}
+          />
           <div>
-            <label className="block text-sm font-medium text-zinc-700">Action</label>
+            <label className="block text-sm font-semibold text-stone-700">Action</label>
             <input
               placeholder="e.g. LOGIN, STOCK_OUT"
               value={filters.action ?? ""}
               onChange={(e) => updateFilter("action", e.target.value || undefined)}
-              className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900"
+              className="mt-1.5 min-h-11 w-full rounded-xl border-2 border-stone-200 px-3.5 py-2 text-sm text-stone-900 transition placeholder:text-stone-400 hover:border-orange-300 focus:border-orange-400 focus:outline-none"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-zinc-700">Entity</label>
-            <select
-              value={filters.entity ?? ""}
-              onChange={(e) => updateFilter("entity", e.target.value || undefined)}
-              className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900"
-            >
-              {ENTITY_OPTIONS.map((e) => (
-                <option key={e || "all"} value={e}>
-                  {e || "All entities"}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-zinc-700">From date</label>
+            <label className="block text-sm font-semibold text-stone-700">From date</label>
             <input
               type="date"
               value={filters.dateFrom ?? ""}
               onChange={(e) => updateFilter("dateFrom", e.target.value || undefined)}
-              className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900"
+              className="form-date mt-1.5 w-full"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-zinc-700">To date</label>
+            <label className="block text-sm font-semibold text-stone-700">To date</label>
             <input
               type="date"
               value={filters.dateTo ?? ""}
               onChange={(e) => updateFilter("dateTo", e.target.value || undefined)}
-              className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900"
+              className="form-date mt-1.5 w-full"
             />
           </div>
         </div>

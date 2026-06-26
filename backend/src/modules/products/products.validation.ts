@@ -13,12 +13,21 @@ export const listProductsQuerySchema = paginationQuerySchema.extend({
 export const createProductSchema = z.object({
   name: z.string().min(2, "Product name must be at least 2 characters").max(200),
   brandId: z.string().min(1, "Brand is required"),
+  stockUnit: z.string().min(1).max(50).optional().default("unit"),
+  unitsPerStockUnit: z.coerce
+    .number()
+    .int()
+    .min(1, "Units per stock unit must be at least 1")
+    .optional()
+    .default(1),
   isActive: z.boolean().optional().default(true),
 });
 
 export const updateProductSchema = z.object({
   name: z.string().min(2).max(200).optional(),
   brandId: z.string().optional(),
+  stockUnit: z.string().min(1).max(50).optional(),
+  unitsPerStockUnit: z.coerce.number().int().min(1).optional(),
   isActive: z.boolean().optional(),
 });
 

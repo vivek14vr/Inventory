@@ -1,8 +1,14 @@
 import { z } from "zod";
 
+const dueTimeSchema = z
+  .string()
+  .regex(/^\d{2}:\d{2}$/, "Use HH:MM format (e.g. 10:00)")
+  .optional();
+
 const taskSchema = z.object({
   title: z.string().min(1, "Task title is required").max(200),
   sortOrder: z.number().int().optional(),
+  dueTime: dueTimeSchema,
 });
 
 export const createChecklistSchema = z.object({

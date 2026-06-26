@@ -2,8 +2,11 @@ export type ChecklistTask = {
   id: string;
   title: string;
   sortOrder: number;
+  dueTime?: string;
   completed?: boolean;
   completedAt?: string;
+  isPastDue?: boolean;
+  completedLate?: boolean;
 };
 
 export type Checklist = {
@@ -20,8 +23,17 @@ export type Checklist = {
 
 export type TodayChecklist = Checklist & {
   date: string;
+  isPastDue?: boolean;
   completedCount: number;
   totalCount: number;
+};
+
+export type ChecklistProgressTask = {
+  title: string;
+  dueTime?: string;
+  isPastDue?: boolean;
+  completedAt?: string;
+  completedLate?: boolean;
 };
 
 export type ChecklistProgressUser = {
@@ -31,12 +43,16 @@ export type ChecklistProgressUser = {
   role: string;
   warehouse?: { name: string; code: string };
   tasks: ChecklistTask[];
+  pendingTasks: ChecklistProgressTask[];
+  completedTasks: ChecklistProgressTask[];
   completedCount: number;
   totalCount: number;
+  status: "completed" | "pending" | "overdue";
 };
 
 export type ChecklistProgress = {
   checklist: Checklist;
   date: string;
+  isPastDue?: boolean;
   users: ChecklistProgressUser[];
 };

@@ -25,17 +25,21 @@ export function buildAppNavGroups(
   ) {
     mainMenu.push({ href: AUTH_ROUTES.appDashboard, label: "Home" });
   }
+  if (hasAnyPermission(role, permissions, [Permission.STOCK_IN])) {
+    mainMenu.push({ href: AUTH_ROUTES.appStockIn, label: "Stock In" });
+  }
+  if (hasAnyPermission(role, permissions, [Permission.STOCK_OUT])) {
+    mainMenu.push({ href: AUTH_ROUTES.appStockOut, label: "Stock Out" });
+  }
   if (
     hasAnyPermission(role, permissions, [
-      Permission.STOCK_IN,
       Permission.STOCK_OUT,
-      Permission.STOCK_VIEW,
+      Permission.TRANSFERS_RECEIVE,
+      Permission.TRANSFERS_VIEW,
+      Permission.TRANSFERS_MANAGE,
     ])
   ) {
-    mainMenu.push({ href: AUTH_ROUTES.appStock, label: "Stock" });
-  }
-  if (hasAnyPermission(role, permissions, [Permission.TRANSFERS_RECEIVE])) {
-    mainMenu.push({ href: AUTH_ROUTES.appReceive, label: "Send Stock" });
+    mainMenu.push({ href: AUTH_ROUTES.appTransfer, label: "Transfer" });
   }
   if (hasAnyPermission(role, permissions, [Permission.INVENTORY_VIEW])) {
     mainMenu.push({ href: AUTH_ROUTES.appInventory, label: "Check Stock" });
@@ -88,6 +92,7 @@ export function buildAppNavGroups(
   }
   if (hasAnyPermission(role, permissions, [Permission.CHECKLISTS_COMPLETE])) {
     mainMenu.push({ href: AUTH_ROUTES.appChecklists, label: "Daily Tasks" });
+    mainMenu.push({ href: AUTH_ROUTES.appNotifications, label: "Notifications" });
   }
 
   const groups: NavGroup[] = [];

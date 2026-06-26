@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { AUTH_ROUTES } from "@/lib/auth/constants";
 import {
@@ -20,25 +21,30 @@ import { StatCard } from "@/components/ui/StatCard";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import type { InventoryBalance, PendingTransfer } from "@/types/stock";
 
-function stockRoutes() {
+function stockRoutes(pathname: string) {
+  const isWarehouse = pathname.startsWith("/warehouse");
   return {
-    stock: AUTH_ROUTES.appStock,
-    inventory: AUTH_ROUTES.appInventory,
-    transfers: AUTH_ROUTES.appTransfers,
+    stockIn: isWarehouse ? AUTH_ROUTES.warehouseStockIn : AUTH_ROUTES.appStockIn,
+    stockOut: isWarehouse ? AUTH_ROUTES.warehouseStockOut : AUTH_ROUTES.appStockOut,
+    inventory: isWarehouse ? AUTH_ROUTES.warehouseInventory : AUTH_ROUTES.appInventory,
+    transfer: isWarehouse ? AUTH_ROUTES.warehouseTransfer : AUTH_ROUTES.appTransfer,
+    returns: isWarehouse ? AUTH_ROUTES.warehouseReturn : AUTH_ROUTES.appReturn,
   };
 }
 
 export default function WarehouseDashboardPage() {
   const { user, loading: authLoading } = useAuth();
+  const pathname = usePathname();
   const [balances, setBalances] = useState<InventoryBalance[]>([]);
   const [pendingTransfers, setPendingTransfers] = useState<PendingTransfer[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
   const warehouseId = getPrimaryWarehouseId(user);
-  const routes = stockRoutes();
+  const routes = stockRoutes(pathname);
   const showStock = canViewStockDashboard(user);
   const showTransfers = canViewPendingTransfers(user);
+  const showReturns = showStock || showTransfers;
 
   const load = useCallback(async () => {
     if (authLoading) return;
@@ -160,10 +166,18 @@ export default function WarehouseDashboardPage() {
               {showStock && (
                 <>
                   <QuickActionCard
-                    href={routes.stock}
-                    title="Add / Sell Stock"
-                    description="Stock in or out"
-                    iconLabel="Stock"
+                    href={routes.stockIn}
+                    title="Stock In"
+                    description="Add stock"
+                    iconLabel="Stock In"
+                    size="large"
+                    color="orange"
+                  />
+                  <QuickActionCard
+                    href={routes.stockOut}
+                    title="Stock Out"
+                    description="Sell to client"
+                    iconLabel="Stock Out"
                     size="large"
                     color="orange"
                   />
@@ -179,10 +193,10 @@ export default function WarehouseDashboardPage() {
               )}
               {showTransfers && (
                 <QuickActionCard
-                  href={routes.transfers}
-                  title="Receive Stock"
-                  description="Pending transfers"
-                  iconLabel="Transfers"
+                  href={routes.transfer}
+                  title="Transfer"
+                  description="Send or receive stock"
+                  iconLabel="Transfer"
                   size="large"
                   color="amber"
                   badge={
@@ -190,6 +204,16 @@ export default function WarehouseDashboardPage() {
                       ? String(pendingTransfers.length)
                       : undefined
                   }
+                />
+              )}
+              {showReturns && (
+                <QuickActionCard
+                  href={routes.returns}
+                  title="Return"
+                  description="From client or warehouse"
+                  iconLabel="Return"
+                  size="large"
+                  color="emerald"
                 />
               )}
             </div>
@@ -223,7 +247,7 @@ export default function WarehouseDashboardPage() {
             <EmptyState
               title="No inventory yet"
               description="Record your first Stock In to start tracking balances."
-              action={<ButtonLink href={routes.stock}>Stock operations</ButtonLink>}
+              action={<ButtonLink href={routes.stockIn}>Stock in</ButtonLink>}
             />
           )}
         </>

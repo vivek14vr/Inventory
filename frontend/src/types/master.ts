@@ -20,6 +20,10 @@ export type Product = {
   name: string;
   brandId: string;
   brand: { id: string; name: string; isActive: boolean };
+  /** Stocking unit label, e.g. Carton, Box. */
+  stockUnit: string;
+  /** Base units (pieces) per one stock unit. */
+  unitsPerStockUnit: number;
   isActive: boolean;
   createdAt?: string;
   updatedAt?: string;

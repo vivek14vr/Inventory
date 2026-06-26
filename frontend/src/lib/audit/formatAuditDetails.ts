@@ -91,6 +91,9 @@ function formatRemainingMeta(meta: Record<string, unknown>): string {
     title: "Title",
     taskTitle: "Task",
     checklistTitle: "Checklist",
+    dueTime: "Due by",
+    completedLate: "After deadline",
+    userName: "User",
     date: "Date",
     adminOverride: "Admin override",
     restoredBalance: "Balance restored",
@@ -159,6 +162,18 @@ export function formatAuditDetails(log: AuditLogEntry): string {
     if (qty) return qty;
   }
 
+  if (action === "INVOICE_UPDATED") {
+    const product = metaString(meta.productName);
+    const prev = metaString(meta.previousInvoiceNumber);
+    const next = metaString(meta.invoiceNumber);
+    return [
+      product ? `Invoice fix · ${product}` : "Invoice updated",
+      prev && next ? `${prev} → ${next}` : next ? `Set to ${next}` : prev ? `Cleared ${prev}` : undefined,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
   if (action === "LOGIN" || action === "LOGOUT") {
     const email = metaString(meta.email);
     if (email) return email;
@@ -169,7 +184,15 @@ export function formatAuditDetails(log: AuditLogEntry): string {
     const task = metaString(meta.taskTitle);
     const date = metaString(meta.date);
     if (action === "CHECKLIST_TASK_COMPLETED") {
-      return [`Completed "${task ?? "task"}"`, title ? `in ${title}` : undefined, date]
+      const due = metaString(meta.dueTime);
+      const late = meta.completedLate === true;
+      return [
+        `Completed "${task ?? "task"}"`,
+        title ? `in ${title}` : undefined,
+        date,
+        due ? `due ${due}` : undefined,
+        late ? "(after deadline)" : undefined,
+      ]
         .filter(Boolean)
         .join(" ");
     }

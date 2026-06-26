@@ -20,6 +20,8 @@ type ProductDoc = {
   _id: Types.ObjectId;
   name: string;
   brandId: Types.ObjectId | { _id: Types.ObjectId; name: string; isActive: boolean };
+  stockUnit?: string;
+  unitsPerStockUnit?: number;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -37,6 +39,8 @@ export function toPublicProduct(doc: ProductDoc) {
       name: brand.name,
       isActive: brand.isActive,
     },
+    stockUnit: doc.stockUnit ?? "unit",
+    unitsPerStockUnit: doc.unitsPerStockUnit ?? 1,
     isActive: doc.isActive,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
@@ -132,6 +136,8 @@ export async function createProduct(input: CreateProductInput) {
     const product = await Product.create({
       name: input.name,
       brandId: input.brandId,
+      stockUnit: input.stockUnit ?? "unit",
+      unitsPerStockUnit: input.unitsPerStockUnit ?? 1,
       isActive: input.isActive ?? true,
     });
 
@@ -168,6 +174,14 @@ export async function updateProduct(id: string, input: UpdateProductInput) {
 
   if (input.name) {
     product.name = input.name;
+  }
+
+  if (input.stockUnit !== undefined) {
+    product.stockUnit = input.stockUnit;
+  }
+
+  if (input.unitsPerStockUnit !== undefined) {
+    product.unitsPerStockUnit = input.unitsPerStockUnit;
   }
 
   if (input.isActive !== undefined) {

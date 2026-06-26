@@ -149,19 +149,28 @@ function PageSizeSelect({
   options: readonly number[];
 }) {
   return (
-    <label className="flex items-center gap-2 text-sm text-zinc-600">
+    <div className="flex items-center gap-2 text-sm text-zinc-600">
       <span className="whitespace-nowrap">Rows per page</span>
-      <select
-        value={limit}
-        onChange={(e) => onLimitChange(Number(e.target.value))}
-        className="rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-sm text-zinc-900"
-      >
-        {options.map((n) => (
-          <option key={n} value={n}>
-            {n}
-          </option>
-        ))}
-      </select>
-    </label>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((n) => {
+          const active = n === limit;
+          return (
+            <button
+              key={n}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onLimitChange(n)}
+              className={`min-h-9 min-w-9 rounded-lg border-2 px-3 text-sm font-bold transition ${
+                active
+                  ? "border-orange-600 bg-orange-600 text-white shadow-sm"
+                  : "border-stone-200 bg-white text-stone-600 hover:border-orange-300 hover:bg-orange-50"
+              }`}
+            >
+              {n}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }

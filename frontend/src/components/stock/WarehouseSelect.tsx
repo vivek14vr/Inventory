@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ButtonSelect } from "@/components/ui/ButtonSelect";
 import { api } from "@/lib/api/client";
 import type { Warehouse } from "@/types/master";
 
@@ -38,23 +39,19 @@ export function WarehouseSelect({
     options = options.filter((w) => w.id !== excludeWarehouseId);
   }
 
+  const buttonOptions = [
+    ...(required ? [] : [{ value: "", label: "All" }]),
+    ...options.map((w) => ({ value: w.id, label: w.name, sublabel: w.code })),
+  ];
+
   return (
-    <div>
-      <label className="block text-sm font-medium text-zinc-700">{label}</label>
-      <select
-        required={required && options.length > 0}
-        disabled={disabled}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="form-select mt-1"
-      >
-        <option value="">Select warehouse</option>
-        {options.map((w) => (
-          <option key={w.id} value={w.id}>
-            {w.name} ({w.code})
-          </option>
-        ))}
-      </select>
-    </div>
+    <ButtonSelect
+      label={label}
+      value={value}
+      onChange={onChange}
+      options={buttonOptions}
+      disabled={disabled}
+      emptyMessage="No warehouses available"
+    />
   );
 }

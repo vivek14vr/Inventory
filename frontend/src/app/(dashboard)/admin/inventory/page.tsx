@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
@@ -22,7 +21,13 @@ import type { Brand, Warehouse } from "@/types/master";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { FilterField, FilterSelect } from "@/components/ui/FilterFields";
 import { AUTH_ROUTES } from "@/lib/auth/constants";
-import type { LowStockResponse, StockResponse, StockRow } from "@/types/inventory";
+import type {
+  LowStockResponse,
+  StockLocationLastChange,
+  StockProductRow,
+  StockResponse,
+  StockRow,
+} from "@/types/inventory";
 import type { StockMovement } from "@/types/stock";
 
 type Tab = "stock" | "movements" | "low-stock";
@@ -113,13 +118,13 @@ export default function AdminInventoryPage() {
         title="Inventory & stock"
         description="View levels, add stock, sell, transfer, or correct quantities."
         actions={
-          <ButtonLink href={AUTH_ROUTES.adminStock} size="sm">
-            Stock operations
+          <ButtonLink href={AUTH_ROUTES.adminStockIn} size="sm">
+            Stock in
           </ButtonLink>
         }
       />
 
-      <div className="flex flex-wrap gap-2 border-b border-zinc-200 pb-2">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {(
           [
             ["stock", "Current stock"],
@@ -129,11 +134,12 @@ export default function AdminInventoryPage() {
         ).map(([key, label]) => (
           <button
             key={key}
+            type="button"
             onClick={() => handleTabChange(key)}
-            className={`rounded-lg px-4 py-2 text-sm font-medium ${
+            className={`min-h-14 rounded-2xl border-2 px-5 py-3.5 text-base font-bold transition active:scale-[0.98] ${
               tab === key
-                ? "bg-orange-100 text-orange-900"
-                : "text-zinc-600 hover:bg-zinc-100"
+                ? "border-orange-600 bg-orange-600 text-white shadow-md shadow-orange-900/20"
+                : "border-stone-200 bg-white text-stone-700 hover:border-orange-300 hover:bg-orange-50"
             }`}
           >
             {label}
@@ -219,6 +225,46 @@ export default function AdminInventoryPage() {
   );
 }
 
+function LastChangeCell({ change }: { change?: StockLocationLastChange | null }) {
+  if (!change) {
+    return <span className="text-base font-medium text-stone-300">—</span>;
+  }
+
+  const isIn = change.type === "STOCK_IN";
+  return (
+    <div className="flex flex-col items-center gap-0.5">
+      <span
+        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-sm font-bold tabular-nums ${
+          isIn ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
+        }`}
+      >
+        {isIn ? "+" : "−"}
+        {change.quantity.toLocaleString()}
+      </span>
+      <span className="text-[10px] font-medium text-stone-400">
+        {new Date(change.createdAt).toLocaleDateString("en-IN", {
+          day: "2-digit",
+          month: "short",
+        })}
+      </span>
+    </div>
+  );
+}
+
+function toStockRow(product: StockProductRow, loc: StockProductRow["locations"][number]): StockRow {
+  return {
+    warehouseId: loc.warehouseId,
+    warehouseName: loc.warehouseName,
+    warehouseCode: loc.warehouseCode,
+    productId: product.productId,
+    productName: product.productName,
+    brandId: product.brandId,
+    brandName: product.brandName,
+    quantity: loc.quantity,
+    updatedAt: loc.updatedAt,
+  };
+}
+
 function StockView({
   data,
   onUpdated,
@@ -229,85 +275,187 @@ function StockView({
   onError: (message: string) => void;
 }) {
   const [editing, setEditing] = useState<StockRow | null>(null);
+  const warehouseColumns = data.warehouses?.length
+    ? data.warehouses
+    : data.summary.byWarehouse.map((w) => ({
+        warehouseId: w.warehouseId,
+        name: w.name,
+        code: w.code,
+      }));
+  const products = data.products ?? [];
 
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard label="Total units" value={data.summary.totalUnits.toLocaleString()} />
-        <StatCard label="SKU locations" value={data.summary.totalSkus} variant="info" />
+        <StatCard label="Products" value={data.summary.totalSkus} variant="info" />
         <StatCard
           label="Warehouses"
           value={data.summary.byWarehouse.length}
         />
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm">
-        <DataTable>
-          <DataTableHead>
-            <DataTableTh>Warehouse</DataTableTh>
-            <DataTableTh>Code</DataTableTh>
-            <DataTableTh>Product</DataTableTh>
-            <DataTableTh>Brand</DataTableTh>
-            <DataTableTh align="right">Quantity</DataTableTh>
-            <DataTableTh>Last updated</DataTableTh>
-            <DataTableTh align="right">Actions</DataTableTh>
-          </DataTableHead>
-          <DataTableBody>
-            {data.items.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-zinc-500">
-                  No stock on hand
-                </td>
+      <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-left text-sm">
+            <thead>
+              <tr className="border-b border-stone-200 bg-orange-50 text-xs font-bold uppercase tracking-wide text-orange-800">
+                <th className="sticky left-0 z-10 bg-orange-50 px-5 py-3.5 text-left">
+                  Product
+                </th>
+                <th className="px-5 py-3.5 text-left">Brand</th>
+                {warehouseColumns.map((wh) => (
+                  <Fragment key={wh.warehouseId}>
+                    <th className="px-5 py-3.5 text-center">
+                      <div className="font-bold">{wh.name}</div>
+                      <div className="mt-0.5 text-[10px] font-semibold normal-case tracking-normal text-orange-600/80">
+                        {wh.code}
+                      </div>
+                    </th>
+                    <th className="px-5 py-3.5 text-center">
+                      <div className="font-bold">Last change</div>
+                      <div className="mt-0.5 text-[10px] font-semibold normal-case tracking-normal text-orange-600/80">
+                        {wh.code}
+                      </div>
+                    </th>
+                  </Fragment>
+                ))}
+                <th className="px-5 py-3.5 text-right">Total</th>
+                <th className="px-5 py-3.5 text-left">Last updated</th>
+                <th className="sticky right-0 z-10 bg-orange-50 px-5 py-3.5 text-right">
+                  Actions
+                </th>
               </tr>
-            ) : (
-              data.items.map((r) => (
-                <DataTableRow key={`${r.warehouseId}-${r.productId}`}>
-                  <DataTableTd className="font-medium text-zinc-900">
-                    {r.warehouseName}
-                  </DataTableTd>
-                  <DataTableTd className="text-zinc-500">{r.warehouseCode}</DataTableTd>
-                  <DataTableTd>
-                    <Link
-                      href={AUTH_ROUTES.adminInventoryItem(r.warehouseId, r.productId)}
-                      className="font-medium text-orange-800 hover:text-orange-900 hover:underline"
+            </thead>
+            <tbody>
+              {products.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={warehouseColumns.length * 2 + 5}
+                    className="px-5 py-10 text-center text-base font-medium text-stone-400"
+                  >
+                    No stock on hand
+                  </td>
+                </tr>
+              ) : (
+                products.map((product, index) => {
+                  const locationByWarehouse = new Map(
+                    product.locations.map((loc) => [loc.warehouseId, loc])
+                  );
+                  const stockedLocations = product.locations.filter((loc) => loc.quantity > 0);
+                  const lastUpdated = product.locations.reduce<string | null>((latest, loc) => {
+                    if (!latest || new Date(loc.updatedAt) > new Date(latest)) {
+                      return loc.updatedAt;
+                    }
+                    return latest;
+                  }, null);
+                  return (
+                    <tr
+                      key={product.productId}
+                      className={`border-t border-stone-100 transition-colors hover:bg-orange-50/50 ${
+                        index % 2 === 0 ? "bg-white" : "bg-stone-50/40"
+                      }`}
                     >
-                      {r.productName}
-                    </Link>
-                  </DataTableTd>
-                  <DataTableTd className="text-zinc-600">{r.brandName}</DataTableTd>
-                  <DataTableTd align="right" className="font-semibold tabular-nums">
-                    {r.quantity.toLocaleString()}
-                  </DataTableTd>
-                  <DataTableTd className="whitespace-nowrap text-zinc-500">
-                    {new Date(r.updatedAt).toLocaleString("en-IN", {
-                      dateStyle: "short",
-                      timeStyle: "short",
-                    })}
-                  </DataTableTd>
-                  <DataTableTd align="right" className="!pr-4">
-                    <div className="flex flex-wrap justify-end gap-2">
-                      <ButtonLink
-                        href={AUTH_ROUTES.adminInventoryItem(r.warehouseId, r.productId)}
-                        variant="ghost"
-                        size="sm"
-                      >
-                        History
-                      </ButtonLink>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setEditing(r)}
-                      >
-                        Update quantity
-                      </Button>
-                    </div>
-                  </DataTableTd>
-                </DataTableRow>
-              ))
-            )}
-          </DataTableBody>
-        </DataTable>
+                      <td className="sticky left-0 z-10 bg-inherit px-5 py-3.5 font-semibold text-stone-900">
+                        {stockedLocations[0] ? (
+                          <ButtonLink
+                            href={AUTH_ROUTES.adminInventoryItem(
+                              stockedLocations[0].warehouseId,
+                              product.productId
+                            )}
+                            variant="ghost"
+                            size="sm"
+                            className="!h-auto !min-h-0 !px-0 !py-0 !text-base !font-semibold !text-stone-900 hover:!text-orange-800 hover:!underline"
+                          >
+                            {product.productName}
+                          </ButtonLink>
+                        ) : (
+                          product.productName
+                        )}
+                      </td>
+                      <td className="px-5 py-3.5 text-stone-600">{product.brandName}</td>
+                      {warehouseColumns.map((wh) => {
+                        const loc = locationByWarehouse.get(wh.warehouseId);
+                        return (
+                          <Fragment key={wh.warehouseId}>
+                            <td className="px-5 py-3.5 text-center">
+                              {loc ? (
+                                <span className="text-lg font-bold tabular-nums text-stone-900">
+                                  {loc.quantity.toLocaleString()}
+                                </span>
+                              ) : (
+                                <span className="text-base font-medium text-stone-300">—</span>
+                              )}
+                            </td>
+                            <td className="px-5 py-3.5 text-center">
+                              <LastChangeCell change={loc?.lastChange} />
+                            </td>
+                          </Fragment>
+                        );
+                      })}
+                      <td className="px-5 py-3.5 text-right text-lg font-bold tabular-nums text-orange-800">
+                        {product.totalQuantity.toLocaleString()}
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3.5 text-sm text-stone-500">
+                        {lastUpdated
+                          ? new Date(lastUpdated).toLocaleString("en-IN", {
+                              dateStyle: "short",
+                              timeStyle: "short",
+                            })
+                          : "—"}
+                      </td>
+                      <td className="sticky right-0 z-10 bg-inherit px-5 py-3.5 text-right">
+                        <div className="flex flex-col items-end gap-2">
+                          <ButtonLink
+                            href={AUTH_ROUTES.adminReturn}
+                            variant="outline"
+                            size="sm"
+                            className="!min-h-8 !border-emerald-200 !text-emerald-800 hover:!bg-emerald-50"
+                          >
+                            Return
+                          </ButtonLink>
+                          {product.locations.map((loc) => {
+                            const stockRow = toStockRow(product, loc);
+                            return (
+                              <div
+                                key={loc.warehouseId}
+                                className="flex flex-wrap items-center justify-end gap-1.5"
+                              >
+                                <span className="text-[10px] font-bold uppercase tracking-wide text-stone-400">
+                                  {loc.warehouseCode}
+                                </span>
+                                <ButtonLink
+                                  href={AUTH_ROUTES.adminInventoryItem(
+                                    loc.warehouseId,
+                                    product.productId
+                                  )}
+                                  variant="ghost"
+                                  size="sm"
+                                  className="!min-h-8 !px-2 !py-1 !text-xs"
+                                >
+                                  History
+                                </ButtonLink>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="!min-h-8 !px-2 !py-1 !text-xs"
+                                  onClick={() => setEditing(stockRow)}
+                                >
+                                  Update
+                                </Button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {editing && (

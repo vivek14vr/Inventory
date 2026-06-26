@@ -111,12 +111,19 @@ export function buildChecklistAuditMetadata(input: {
   taskId: string;
   taskTitle: string;
   date: string;
+  dueTime?: string;
+  completedLate?: boolean;
+  userName?: string;
 }): Record<string, unknown> {
-  return {
+  const meta: Record<string, unknown> = {
     checklistId: input.checklistId,
     checklistTitle: input.checklistTitle,
     taskId: input.taskId,
     taskTitle: input.taskTitle,
     date: input.date,
   };
+  if (input.dueTime) meta.dueTime = input.dueTime;
+  if (input.completedLate) meta.completedLate = true;
+  if (input.userName) meta.userName = input.userName;
+  return meta;
 }

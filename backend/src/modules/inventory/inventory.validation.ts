@@ -64,3 +64,33 @@ export const stockItemDetailQuerySchema = paginationQuerySchema.extend({
 });
 
 export type StockItemDetailQuery = z.infer<typeof stockItemDetailQuerySchema>;
+
+export const invoiceListQuerySchema = paginationQuerySchema.extend({
+  search: z.string().trim().optional(),
+  sortBy: z
+    .enum([
+      "createdAt",
+      "clientName",
+      "invoiceNumber",
+      "quantity",
+      "type",
+      "invoiceLastWorkedAt",
+    ])
+    .optional()
+    .default("createdAt"),
+});
+
+export const invoiceLookupQuerySchema = invoiceListQuerySchema.refine(
+  (data) => Boolean(data.search?.trim()),
+  { message: "Enter an invoice number, client, or product to search" }
+);
+
+export const updateMovementInvoiceSchema = z.object({
+  invoiceNumber: z.string().max(100).optional(),
+  clientName: z.string().max(200).optional(),
+  markLastWorked: z.boolean().optional(),
+});
+
+export type InvoiceListQuery = z.infer<typeof invoiceListQuerySchema>;
+export type InvoiceLookupQuery = z.infer<typeof invoiceLookupQuerySchema>;
+export type UpdateMovementInvoiceInput = z.infer<typeof updateMovementInvoiceSchema>;

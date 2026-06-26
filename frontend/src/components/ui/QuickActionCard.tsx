@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { NavIcon } from "@/components/layout/NavIcon";
 
-type TileColor = "orange" | "amber" | "sky" | "violet" | "rose" | "teal";
+type TileColor = "orange" | "amber" | "sky" | "violet" | "rose" | "teal" | "emerald" | "indigo";
 
 const colorStyles: Record<TileColor, { bg: string; icon: string; border: string }> = {
   orange: {
@@ -33,6 +33,16 @@ const colorStyles: Record<TileColor, { bg: string; icon: string; border: string 
     bg: "bg-teal-50 group-hover:bg-teal-100",
     icon: "bg-teal-600 text-white",
     border: "group-hover:border-teal-300",
+  },
+  emerald: {
+    bg: "bg-emerald-50 group-hover:bg-emerald-100",
+    icon: "bg-emerald-600 text-white",
+    border: "group-hover:border-emerald-300",
+  },
+  indigo: {
+    bg: "bg-indigo-50 group-hover:bg-indigo-100",
+    icon: "bg-indigo-600 text-white",
+    border: "group-hover:border-indigo-300",
   },
 };
 

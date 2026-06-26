@@ -7,6 +7,7 @@ import {
   hasWarehouseScopedPermission,
   type PermissionGrant,
 } from "@/lib/auth/permissions";
+import { ButtonSelect } from "@/components/ui/ButtonSelect";
 import { PermissionEditor } from "@/components/users/PermissionEditor";
 import type { PublicUser } from "@/types/auth";
 
@@ -179,36 +180,30 @@ export function UsersPageContent() {
               value={form.password}
               onChange={(v) => setForm({ ...form, password: v })}
             />
-            <div>
-              <label className="block text-sm font-medium text-zinc-700">Role</label>
-              <select
-                value={form.role}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    role: e.target.value as "ADMIN" | "WAREHOUSE_USER",
-                    permissions: [],
-                  })
-                }
-                className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-              >
-                <option value="WAREHOUSE_USER">Staff (custom permissions)</option>
-                <option value="ADMIN">Admin (full access)</option>
-              </select>
-            </div>
+            <ButtonSelect
+              label="Role"
+              value={form.role}
+              onChange={(v) =>
+                setForm({
+                  ...form,
+                  role: v as "ADMIN" | "WAREHOUSE_USER",
+                  permissions: [],
+                })
+              }
+              options={[
+                { value: "WAREHOUSE_USER", label: "Staff (custom permissions)" },
+                { value: "ADMIN", label: "Admin (full access)" },
+              ]}
+            />
           </div>
 
           {form.role === "WAREHOUSE_USER" && (
             <>
               <div>
-                <label className="block text-sm font-medium text-zinc-700">
-                  Home warehouse
-                </label>
-                <select
-                  required
+                <ButtonSelect
+                  label="Home warehouse"
                   value={form.warehouseId}
-                  onChange={(e) => {
-                    const warehouseId = e.target.value;
+                  onChange={(warehouseId) => {
                     setForm((f) => ({
                       ...f,
                       warehouseId,
@@ -217,15 +212,13 @@ export function UsersPageContent() {
                         : [],
                     }));
                   }}
-                  className="mt-1 w-full max-w-md rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-                >
-                  <option value="">Select warehouse…</option>
-                  {warehouses.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.name} ({w.code})
-                    </option>
-                  ))}
-                </select>
+                  options={warehouses.map((w) => ({
+                    value: w.id,
+                    label: w.name,
+                    sublabel: w.code,
+                  }))}
+                  emptyMessage="No warehouses available"
+                />
                 <p className="mt-1 text-xs text-zinc-500">
                   Used for the dashboard and default stock access. Password is stored once
                   (bcrypt hashed on the server only).

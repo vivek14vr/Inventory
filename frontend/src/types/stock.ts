@@ -15,6 +15,7 @@ export type StockMovement = {
   clientName?: string;
   invoiceNumber?: string;
   notes?: string;
+  invoiceLastWorkedAt?: string;
   product?: { id: string; name: string };
   brand?: { id: string; name: string };
   warehouse?: { id: string; name: string; code: string };
