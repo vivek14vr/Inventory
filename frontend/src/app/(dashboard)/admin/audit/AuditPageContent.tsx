@@ -47,10 +47,22 @@ export function AuditPageContent() {
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState("");
+  const [userFilterError, setUserFilterError] = useState("");
   const { page, setPage, limit, setLimit, resetPage } = usePagination(20);
 
   useEffect(() => {
-    api.users.list().then(setUsers).catch(() => setUsers([]));
+    api.audit
+      .users()
+      .then((list) => {
+        setUsers(list);
+        setUserFilterError("");
+      })
+      .catch((err) => {
+        setUsers([]);
+        setUserFilterError(
+          err instanceof ApiError ? err.message : "Could not load users for filters"
+        );
+      });
   }, []);
 
   const loadAudit = useCallback(async () => {
@@ -158,7 +170,8 @@ export function AuditPageContent() {
             <ul className="mt-2 space-y-1 text-sm text-zinc-700">
               {summary.topActions.slice(0, 3).map((a) => (
                 <li key={a.action}>
-                  {a.action} <span className="text-zinc-400">({a.count})</span>
+                  {formatAuditActionLabel(a.action)}{" "}
+                  <span className="text-zinc-400">({a.count})</span>
                 </li>
               ))}
               {summary.topActions.length === 0 && (
@@ -243,6 +256,7 @@ export function AuditPageContent() {
       </div>
 
       <Alert message={error} />
+      <Alert message={userFilterError} />
 
       {loading ? (
         <LoadingSpinner label="Loading audit log…" />

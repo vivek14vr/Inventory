@@ -47,7 +47,7 @@ function transferRoute(meta: Record<string, unknown>): string | undefined {
   const fromLabel = from ? `${from}${fromCode ? ` (${fromCode})` : ""}` : undefined;
   const toLabel = to ? `${to}${toCode ? ` (${toCode})` : ""}` : undefined;
   const item = product ? `${product}${brand ? ` · ${brand}` : ""}` : undefined;
-  const qtyLabel = qty ? `${qty} units` : undefined;
+  const qtyLabel = qty ? `${qty} pieces` : undefined;
 
   const parts: string[] = [];
   if (fromLabel && toLabel) parts.push(`${fromLabel} → ${toLabel}`);
@@ -75,7 +75,7 @@ function actorLine(meta: Record<string, unknown>): string | undefined {
 function quantityOnly(meta: Record<string, unknown>, suffix = ""): string | undefined {
   const qty = metaString(meta.quantity);
   if (!qty) return undefined;
-  return suffix ? `${qty} units ${suffix}`.trim() : `${qty} units`;
+  return suffix ? `${qty} pieces ${suffix}`.trim() : `${qty} pieces`;
 }
 
 function formatRemainingMeta(meta: Record<string, unknown>): string {
@@ -101,7 +101,12 @@ function formatRemainingMeta(meta: Record<string, unknown>): string {
     sourceBalance: "Source balance",
     assignedUserCount: "Users assigned",
     taskCount: "Tasks",
-    changes: "Changes",
+    permissionsGranted: "Initial access",
+    granted: "Granted",
+    revoked: "Revoked",
+    totalGrants: "Total grants",
+    targetUserName: "User",
+    targetUserEmail: "Email",
     successCount: "Imported",
     failedCount: "Failed",
     skippedCount: "Skipped",
@@ -174,9 +179,90 @@ export function formatAuditDetails(log: AuditLogEntry): string {
       .join(" · ");
   }
 
+  if (action === "STOCK_ADJUSTED") {
+    const product = metaString(meta.productName);
+    const warehouse = metaString(meta.warehouseName);
+    const code = metaString(meta.warehouseCode);
+    const prev = metaString(meta.previous);
+    const next = metaString(meta.next);
+    const reason = metaString(meta.reason);
+    return [
+      product ? `Adjusted ${product}` : "Stock adjusted",
+      warehouse ? `at ${warehouse}${code ? ` (${code})` : ""}` : undefined,
+      prev !== undefined && next !== undefined
+        ? `${prev} → ${next} pieces`
+        : undefined,
+      reason ? `· ${reason}` : undefined,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  if (action === "INVOICE_DELETED") {
+    const product = metaString(meta.productName);
+    const invoice = metaString(meta.invoiceNumber);
+    const qty = metaString(meta.quantity);
+    return [
+      product ? `Deleted sale invoice · ${product}` : "Deleted sale invoice",
+      invoice ? `#${invoice}` : undefined,
+      qty ? `${qty} pieces restored` : undefined,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
   if (action === "LOGIN" || action === "LOGOUT") {
     const email = metaString(meta.email);
     if (email) return email;
+  }
+
+  if (action === "USER_CREATED") {
+    const name = metaString(meta.name);
+    const email = metaString(meta.email);
+    const role = metaString(meta.role);
+    const perms = meta.permissionsGranted as string[] | undefined;
+    const parts = [
+      name ? `Created ${name}` : "User created",
+      email,
+      role ? `role ${role}` : undefined,
+    ];
+    if (perms?.length) {
+      parts.push(`access: ${perms.join("; ")}`);
+    }
+    return parts.filter(Boolean).join(" · ");
+  }
+
+  if (action === "USER_PERMISSIONS_UPDATED") {
+    const target = metaString(meta.targetUserName) ?? metaString(meta.targetUserEmail);
+    const granted = meta.granted as string[] | undefined;
+    const revoked = meta.revoked as string[] | undefined;
+    const parts = [target ? `Access updated for ${target}` : "User permissions updated"];
+    if (granted?.length) parts.push(`Granted: ${granted.join("; ")}`);
+    if (revoked?.length) parts.push(`Revoked: ${revoked.join("; ")}`);
+    const total = metaString(meta.totalGrants);
+    if (total && !granted?.length && !revoked?.length) {
+      parts.push(`${total} grants total`);
+    }
+    return parts.join(" · ");
+  }
+
+  if (action === "USER_UPDATED") {
+    const target = metaString(meta.targetUserName) ?? metaString(meta.targetUserEmail);
+    const rawChanges = meta.changes as string[] | undefined;
+    const changes = rawChanges
+      ?.filter((c) => c !== "password")
+      .map((c) => (c === "warehouseId" ? "home warehouse" : c));
+    const passwordChanged = rawChanges?.includes("password");
+    const active =
+      meta.isActive === true ? "activated" : meta.isActive === false ? "deactivated" : undefined;
+    return [
+      target ? `Updated ${target}` : "User updated",
+      active,
+      passwordChanged ? "password reset" : undefined,
+      changes?.length ? changes.join(", ") : undefined,
+    ]
+      .filter(Boolean)
+      .join(" · ");
   }
 
   if (action.startsWith("CHECKLIST_")) {

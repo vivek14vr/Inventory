@@ -23,7 +23,7 @@ router.get(
   authenticate,
   requireAnyPermission(
     [Permission.TRANSFERS_VIEW, Permission.TRANSFERS_RECEIVE, Permission.TRANSFERS_MANAGE],
-    { warehouseIdFrom: "query" }
+    { warehouseIdFrom: "query", allowScopedWithoutWarehouseId: true }
   ),
   asyncHandler(async (req, res) => {
     const warehouseId =
@@ -53,14 +53,19 @@ router.get(
 router.get(
   "/history",
   authenticate,
-  requireAnyPermission([Permission.TRANSFERS_VIEW, Permission.TRANSFERS_MANAGE]),
+  requireAnyPermission([
+    Permission.TRANSFERS_VIEW,
+    Permission.TRANSFERS_RECEIVE,
+    Permission.TRANSFERS_MANAGE,
+  ], { allowScopedWithoutWarehouseId: true }),
   asyncHandler(async (req, res) => {
     const parsed = transferHistoryQuerySchema.safeParse(req.query);
     if (!parsed.success) {
       throw new BadRequestError(parsed.error.errors[0]?.message ?? "Invalid query");
     }
     const { items, pagination } = await transfersService.listTransferHistory(
-      parsed.data
+      parsed.data,
+      req.user!
     );
     sendSuccess(res, items, 200, { pagination });
   })
@@ -87,6 +92,11 @@ router.patch(
 router.post(
   "/:id/return",
   authenticate,
+  requireAnyPermission([
+    Permission.TRANSFERS_MANAGE,
+    Permission.TRANSFERS_RECEIVE,
+    Permission.STOCK_IN,
+  ], { allowScopedWithoutWarehouseId: true }),
   asyncHandler(async (req, res) => {
     const parsed = returnTransferSchema.safeParse(req.body);
     if (!parsed.success) {

@@ -180,6 +180,7 @@ export const api = {
       apiClient<Warehouse[]>("/warehouses", {
         params: includeInactive ? { includeInactive: "true" } : undefined,
       }),
+    get: (id: string) => apiClient<Warehouse>(`/warehouses/${id}`),
     create: (data: { name: string; code: string; isActive?: boolean }) =>
       apiClient<Warehouse>("/warehouses", {
         method: "POST",
@@ -200,6 +201,7 @@ export const api = {
       apiClient<Brand[]>("/brands", {
         params: includeInactive ? { includeInactive: "true" } : undefined,
       }),
+    get: (id: string) => apiClient<Brand>(`/brands/${id}`),
     create: (data: { name: string; isActive?: boolean }) =>
       apiClient<Brand>("/brands", {
         method: "POST",
@@ -242,11 +244,14 @@ export const api = {
 
       return items;
     },
+    get: (id: string) => apiClient<Product>(`/products/${id}`),
     create: (data: {
       name: string;
+      secondaryName?: string;
       brandId: string;
       stockUnit?: string;
       unitsPerStockUnit?: number;
+      lowStockThreshold?: number;
       isActive?: boolean;
     }) =>
       apiClient<Product>("/products", {
@@ -257,9 +262,11 @@ export const api = {
       id: string,
       data: Partial<{
         name: string;
+        secondaryName: string | null;
         brandId: string;
         stockUnit: string;
         unitsPerStockUnit: number;
+        lowStockThreshold: number | null;
         isActive: boolean;
       }>
     ) =>
@@ -270,8 +277,14 @@ export const api = {
   },
 
   stock: {
-    balances: (params?: PaginationParams & { search?: string; sortBy?: string }) =>
-      apiClientPaginated<InventoryBalance>("/stock/balances", params),
+    balances: (
+      params?: PaginationParams & {
+        warehouseId?: string;
+        productId?: string;
+        search?: string;
+        sortBy?: string;
+      }
+    ) => apiClientPaginated<InventoryBalance>("/stock/balances", params),
     movements: () => apiClient<StockMovement[]>("/stock/movements"),
     stockIn: (data: {
       warehouseId?: string;
@@ -312,6 +325,7 @@ export const api = {
       productId?: string;
       search?: string;
       sortBy?: string;
+      sortOrder?: "asc" | "desc";
     }) =>
       apiClientPaginatedData<StockResponse["items"][number], StockResponse>(
         "/inventory/stock",
@@ -322,10 +336,17 @@ export const api = {
         warehouseId?: string;
         brandId?: string;
         type?: string;
+        sortBy?: string;
+        sortOrder?: "asc" | "desc";
       }
     ) => apiClientPaginated<StockMovement>("/inventory/movements", params),
     lowStock: (
-      params?: PaginationParams & { threshold?: string; warehouseId?: string; search?: string }
+      params?: PaginationParams & {
+        warehouseId?: string;
+        search?: string;
+        sortBy?: string;
+        sortOrder?: "asc" | "desc";
+      }
     ) =>
       apiClientPaginatedData<LowStockResponse["items"][number], LowStockResponse>(
         "/inventory/low-stock",
@@ -345,7 +366,7 @@ export const api = {
       productId: string;
       brandId: string;
       quantity: number;
-      reason: string;
+      reason?: string;
     }) =>
       apiClient<{
         warehouseId: string;
@@ -374,6 +395,11 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
+    deleteInvoice: (movementId: string) =>
+      apiClient<{ deleted: boolean; id: string }>(
+        `/inventory/movements/${movementId}/invoice`,
+        { method: "DELETE" }
+      ),
   },
 
   transfers: {
@@ -388,11 +414,19 @@ export const api = {
         destinationWarehouseId?: string;
         dateFrom?: string;
         dateTo?: string;
+        sortBy?:
+          | "status"
+          | "createdAt"
+          | "quantity"
+          | "productName"
+          | "brandName"
+          | "route";
+        sortOrder?: "asc" | "desc";
       }
     ) => apiClientPaginated<TransferRecord>("/transfers/history", params),
     updateStatus: (
       id: string,
-      data: { status: "RECEIVED" | "CANCELLED" | "RETURNED"; notes?: string }
+      data: { status: "RECEIVED" | "CANCELLED"; notes?: string }
     ) =>
       apiClient<TransferRecord>(`/transfers/${id}/status`, {
         method: "PATCH",
@@ -525,6 +559,7 @@ export const api = {
     list: (filters?: AuditFilters & PaginationParams) =>
       apiClientPaginated<AuditLogEntry>("/audit", filters),
     summary: () => apiClient<AuditSummary>("/audit/summary"),
+    users: () => apiClient<PublicUser[]>("/audit/users"),
   },
 
   checklists: {
@@ -608,6 +643,7 @@ export const api = {
 
   users: {
     list: () => apiClient<PublicUser[]>("/users"),
+    get: (id: string) => apiClient<PublicUser>(`/users/${id}`),
     create: (data: {
       name: string;
       email: string;

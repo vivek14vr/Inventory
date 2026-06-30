@@ -45,6 +45,13 @@ export function DashboardShell({
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  // On desktop the sidebar is narrow and expands on hover (CSS width animation).
+  // On mobile it is the full slide-in drawer controlled by `mobileOpen`.
+  const [hovered, setHovered] = useState(false);
+  const showText = hovered || mobileOpen;
+  const textClass = `transition-opacity duration-200 ${
+    showText ? "opacity-100" : "opacity-0"
+  }`;
 
   const primaryGroup = navGroups[0];
   const moreGroups = navGroups.slice(1);
@@ -64,26 +71,29 @@ export function DashboardShell({
       <Link
         href={item.href}
         onClick={onClick}
+        title={item.label}
         className={`nav-link ${active ? "nav-link-active" : "nav-link-inactive"}`}
       >
         <NavIcon label={item.label} />
-        {item.label}
+        <span className={`whitespace-nowrap ${textClass}`}>{item.label}</span>
       </Link>
     );
   }
 
   const sidebar = (
-    <div className="flex h-full flex-col bg-white">
-      <div className="flex items-center gap-3 border-b border-orange-100 bg-gradient-to-r from-orange-600 to-orange-500 px-5 py-5 text-white">
-        <BrandLogo size="sm" variant="light" />
-        <div className="min-w-0 flex-1">
+    <div className="flex h-full w-[280px] flex-col bg-white">
+      <div className="flex items-center gap-3 border-b border-orange-100 bg-gradient-to-r from-orange-600 to-orange-500 px-[18px] py-5 text-white">
+        <span className="shrink-0">
+          <BrandLogo size="sm" variant="light" />
+        </span>
+        <div className={`min-w-0 flex-1 ${textClass}`}>
           <p className="truncate text-base font-bold">{title}</p>
           <p className="truncate text-sm text-orange-100">
             {subtitle ?? "SV Enterprises"}
           </p>
         </div>
         {notificationsHref && (
-          <div className="shrink-0 [&_button]:border-white/30 [&_button]:bg-white/10 [&_button]:text-white [&_button]:hover:border-white [&_button]:hover:bg-white/20">
+          <div className={`shrink-0 [&_button]:border-white/30 [&_button]:bg-white/10 [&_button]:text-white [&_button]:hover:border-white [&_button]:hover:bg-white/20 ${textClass}`}>
             <ChecklistNotificationBell
               notificationsHref={notificationsHref}
               checklistsHref={checklistsHref}
@@ -109,16 +119,17 @@ export function DashboardShell({
             <button
               type="button"
               onClick={() => setMoreOpen((v) => !v)}
+              title="More options"
               className="nav-link w-full nav-link-inactive"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-6 w-6 shrink-0">
                 <path strokeLinecap="round" d="M4 6h16M4 12h16M4 18h16" />
               </svg>
-              More options
+              <span className={`whitespace-nowrap ${textClass}`}>More options</span>
               <svg
                 viewBox="0 0 20 20"
                 fill="currentColor"
-                className={`ml-auto h-5 w-5 transition ${moreOpen ? "rotate-180" : ""}`}
+                className={`ml-auto h-5 w-5 transition ${moreOpen ? "rotate-180" : ""} ${textClass}`}
               >
                 <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
               </svg>
@@ -138,10 +149,10 @@ export function DashboardShell({
         )}
       </nav>
 
-      <div className="border-t border-orange-100 bg-orange-50/50 p-4">
+      <div className="border-t border-orange-100 bg-orange-50/50 p-[14px]">
         <div className="flex items-center gap-3 rounded-2xl bg-white px-3 py-3 shadow-sm">
           <UserInitial name={user?.name ?? "?"} />
-          <div className="min-w-0 flex-1">
+          <div className={`min-w-0 flex-1 ${textClass}`}>
             <p className="truncate text-base font-semibold text-stone-900">{user?.name}</p>
             <p className="truncate text-sm text-stone-500">
               {user?.warehouse?.name ??
@@ -154,9 +165,13 @@ export function DashboardShell({
         </div>
         <button
           onClick={() => logout()}
-          className="mt-3 w-full min-h-12 rounded-2xl border-2 border-stone-200 bg-white px-4 py-3 text-base font-semibold text-stone-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700"
+          title="Sign out"
+          className="mt-3 flex w-full min-h-12 items-center justify-center gap-2 rounded-2xl border-2 border-stone-200 bg-white px-4 py-3 text-base font-semibold text-stone-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700"
         >
-          Sign out
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5 shrink-0">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12H3m0 0l4-4m-4 4l4 4m6-11V5a2 2 0 012-2h4a2 2 0 012 2v14a2 2 0 01-2 2h-4a2 2 0 01-2-2v-1" />
+          </svg>
+          <span className={`whitespace-nowrap ${textClass}`}>Sign out</span>
         </button>
       </div>
     </div>
@@ -174,14 +189,16 @@ export function DashboardShell({
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-[280px] border-r border-orange-100 bg-white shadow-xl transition-transform duration-200 lg:translate-x-0 ${
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        className={`fixed inset-y-0 left-0 z-50 w-[280px] overflow-hidden border-r border-orange-100 bg-white shadow-xl transition-[width,transform] duration-300 ease-in-out lg:translate-x-0 ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        } ${hovered ? "lg:w-[280px] lg:shadow-2xl" : "lg:w-20"}`}
       >
         {sidebar}
       </aside>
 
-      <div className="lg:pl-[280px]">
+      <div className="lg:pl-20">
         <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-orange-100 bg-white px-4 py-3 shadow-sm lg:hidden">
           <button
             type="button"
@@ -205,7 +222,7 @@ export function DashboardShell({
         </header>
 
         <main className="px-4 py-5 pb-24 sm:px-6 sm:py-7 lg:px-8 lg:py-8 lg:pb-8">
-          <div className="mx-auto w-full max-w-[1600px]">{children}</div>
+          <div className="w-full">{children}</div>
         </main>
 
         {/* Mobile bottom nav — large touch targets like PetPooja */}

@@ -20,7 +20,16 @@ import type { PaginationMeta } from "@/types/pagination";
 import type { Brand, Warehouse } from "@/types/master";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { FilterField, FilterSelect } from "@/components/ui/FilterFields";
+import { SelectMenu } from "@/components/ui/SelectMenu";
 import { AUTH_ROUTES } from "@/lib/auth/constants";
+import { formatSecondaryName } from "@/lib/products/productNames";
+import {
+  pluralizeStockUnit,
+  splitBaseQuantity,
+  stockUnitsAndLooseToBase,
+  usesStockUnit,
+} from "@/lib/products/productUnits";
+import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
 import type {
   LowStockResponse,
   StockLocationLastChange,
@@ -31,6 +40,37 @@ import type {
 import type { StockMovement } from "@/types/stock";
 
 type Tab = "stock" | "movements" | "low-stock";
+
+type StockSortField = "quantity" | "productName" | "brandName" | "warehouseName" | "updatedAt";
+type MovementSortField = "createdAt" | "quantity" | "type";
+type LowStockSortField =
+  | "quantity"
+  | "productName"
+  | "brandName"
+  | "warehouseName"
+  | "lowStockThreshold";
+
+const STOCK_SORT_OPTIONS: { value: StockSortField; label: string }[] = [
+  { value: "updatedAt", label: "Last updated" },
+  { value: "productName", label: "Product" },
+  { value: "brandName", label: "Brand" },
+  { value: "warehouseName", label: "Warehouse" },
+  { value: "quantity", label: "Quantity" },
+];
+
+const MOVEMENT_SORT_OPTIONS: { value: MovementSortField; label: string }[] = [
+  { value: "createdAt", label: "Date" },
+  { value: "type", label: "Type" },
+  { value: "quantity", label: "Quantity" },
+];
+
+const LOW_STOCK_SORT_OPTIONS: { value: LowStockSortField; label: string }[] = [
+  { value: "quantity", label: "Quantity" },
+  { value: "productName", label: "Product" },
+  { value: "brandName", label: "Brand" },
+  { value: "warehouseName", label: "Warehouse" },
+  { value: "lowStockThreshold", label: "Threshold" },
+];
 
 export default function AdminInventoryPage() {
   const [tab, setTab] = useState<Tab>("stock");
@@ -46,17 +86,27 @@ export default function AdminInventoryPage() {
   const [pagination, setPagination] = useState<PaginationMeta | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [filterError, setFilterError] = useState("");
   const [success, setSuccess] = useState("");
+  const [sortBy, setSortBy] = useState<string>("updatedAt");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   const { page, setPage, limit, setLimit, resetPage, params } = usePagination(20);
 
   useEffect(() => {
+    setFilterError("");
     Promise.all([api.warehouses.list(true), api.brands.list()])
       .then(([w, b]) => {
         setWarehouses(w);
         setBrands(b);
       })
-      .catch(() => {});
+      .catch((err) => {
+        setFilterError(
+          err instanceof ApiError
+            ? err.message
+            : "Could not load warehouses or brands for filters"
+        );
+      });
   }, []);
 
   const load = useCallback(async () => {
@@ -66,6 +116,8 @@ export default function AdminInventoryPage() {
       const base = {
         page,
         limit,
+        sortBy,
+        sortOrder,
         ...(search.trim() ? { search: search.trim() } : {}),
         ...(warehouseId ? { warehouseId } : {}),
         ...(brandId ? { brandId } : {}),
@@ -96,7 +148,7 @@ export default function AdminInventoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [tab, warehouseId, brandId, movementType, search, page, limit]);
+  }, [tab, warehouseId, brandId, movementType, search, page, limit, sortBy, sortOrder]);
 
   useEffect(() => {
     load();
@@ -110,7 +162,24 @@ export default function AdminInventoryPage() {
   function handleTabChange(next: Tab) {
     setTab(next);
     resetPage();
+    if (next === "stock") {
+      setSortBy("updatedAt");
+      setSortOrder("desc");
+    } else if (next === "movements") {
+      setSortBy("createdAt");
+      setSortOrder("desc");
+    } else {
+      setSortBy("quantity");
+      setSortOrder("asc");
+    }
   }
+
+  const sortOptions =
+    tab === "stock"
+      ? STOCK_SORT_OPTIONS
+      : tab === "movements"
+        ? MOVEMENT_SORT_OPTIONS
+        : LOW_STOCK_SORT_OPTIONS;
 
   return (
     <div className="space-y-6 text-zinc-900">
@@ -190,9 +259,31 @@ export default function AdminInventoryPage() {
             ]}
           />
         )}
+        <SelectMenu
+          label="Sort by"
+          value={sortBy}
+          onChange={(v) => {
+            setSortBy(v);
+            resetPage();
+          }}
+          options={sortOptions.map((o) => ({ value: o.value, label: o.label }))}
+        />
+        <SelectMenu
+          label="Order"
+          value={sortOrder}
+          onChange={(v) => {
+            setSortOrder(v as "asc" | "desc");
+            resetPage();
+          }}
+          options={[
+            { value: "asc", label: "Ascending" },
+            { value: "desc", label: "Descending" },
+          ]}
+        />
       </div>
 
       <Alert message={error} />
+      <Alert message={filterError} />
       {success ? <Alert message={success} type="success" /> : null}
 
       {loading ? (
@@ -225,28 +316,76 @@ export default function AdminInventoryPage() {
   );
 }
 
-function LastChangeCell({ change }: { change?: StockLocationLastChange | null }) {
+function StackedHeader({ text, className }: { text: string; className?: string }) {
+  const words = text.trim().split(/\s+/);
+  return (
+    <div className={`flex flex-col leading-tight ${className ?? ""}`}>
+      {words.map((word, i) => (
+        <span key={`${word}-${i}`} className="whitespace-nowrap">
+          {word}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function LastChangeCell({
+  change,
+  updatedAt,
+  stockUnit,
+  unitsPerStockUnit,
+}: {
+  change?: StockLocationLastChange | null;
+  updatedAt?: string | null;
+  stockUnit?: string;
+  unitsPerStockUnit?: number;
+}) {
+  const timingLabel = updatedAt
+    ? new Date(updatedAt).toLocaleString("en-IN", {
+        dateStyle: "short",
+        timeStyle: "short",
+      })
+    : change
+      ? new Date(change.createdAt).toLocaleString("en-IN", {
+          dateStyle: "short",
+          timeStyle: "short",
+        })
+      : null;
+
   if (!change) {
-    return <span className="text-base font-medium text-stone-300">—</span>;
+    if (!timingLabel) {
+      return <span className="text-base font-medium text-stone-300">—</span>;
+    }
+    return (
+      <span className="text-[10px] font-medium text-stone-400">{timingLabel}</span>
+    );
   }
 
   const isIn = change.type === "STOCK_IN";
+  const split = splitBaseQuantity(change.quantity, { stockUnit, unitsPerStockUnit });
+
   return (
-    <div className="flex flex-col items-center gap-0.5">
-      <span
-        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-sm font-bold tabular-nums ${
+    <div className="flex flex-col items-start gap-1.5">
+      <div
+        className={`inline-flex flex-col items-center rounded-xl px-2.5 py-1 text-sm font-bold tabular-nums ${
           isIn ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
         }`}
       >
-        {isIn ? "+" : "−"}
-        {change.quantity.toLocaleString()}
-      </span>
-      <span className="text-[10px] font-medium text-stone-400">
-        {new Date(change.createdAt).toLocaleDateString("en-IN", {
-          day: "2-digit",
-          month: "short",
-        })}
-      </span>
+        <span>
+          {isIn ? "+" : "−"}
+          {split.usesStockUnit
+            ? ` ${split.fullUnits} ${pluralizeStockUnit(split.unitLabel, split.fullUnits)}`
+            : ` ${change.quantity.toLocaleString()}`}
+        </span>
+        {split.usesStockUnit && split.loose > 0 ? (
+          <span className="text-[10px] font-semibold">{split.loose} loose</span>
+        ) : null}
+      </div>
+      {timingLabel ? (
+        <span className="whitespace-nowrap text-[10px] font-medium text-stone-400">
+          {timingLabel}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -258,8 +397,11 @@ function toStockRow(product: StockProductRow, loc: StockProductRow["locations"][
     warehouseCode: loc.warehouseCode,
     productId: product.productId,
     productName: product.productName,
+    secondaryProductName: product.secondaryProductName,
     brandId: product.brandId,
     brandName: product.brandName,
+    stockUnit: product.stockUnit,
+    unitsPerStockUnit: product.unitsPerStockUnit,
     quantity: loc.quantity,
     updatedAt: loc.updatedAt,
   };
@@ -286,8 +428,7 @@ function StockView({
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard label="Total units" value={data.summary.totalUnits.toLocaleString()} />
+      <div className="grid gap-4 sm:grid-cols-2">
         <StatCard label="Products" value={data.summary.totalSkus} variant="info" />
         <StatCard
           label="Warehouses"
@@ -295,34 +436,33 @@ function StockView({
         />
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
+      <div className="hidden overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm md:block">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead>
               <tr className="border-b border-stone-200 bg-orange-50 text-xs font-bold uppercase tracking-wide text-orange-800">
-                <th className="sticky left-0 z-10 bg-orange-50 px-5 py-3.5 text-left">
-                  Product
+                <th className="sticky left-0 z-10 bg-orange-50 px-4 py-3.5 text-left align-bottom">
+                  <StackedHeader text="Primary name" />
                 </th>
-                <th className="px-5 py-3.5 text-left">Brand</th>
+                <th className="px-4 py-3.5 text-left align-bottom">
+                  <StackedHeader text="Secondary name" />
+                </th>
+                <th className="px-4 py-3.5 text-left align-bottom">Brand</th>
                 {warehouseColumns.map((wh) => (
                   <Fragment key={wh.warehouseId}>
-                    <th className="px-5 py-3.5 text-center">
-                      <div className="font-bold">{wh.name}</div>
-                      <div className="mt-0.5 text-[10px] font-semibold normal-case tracking-normal text-orange-600/80">
-                        {wh.code}
-                      </div>
+                    <th className="px-4 py-3.5 text-left align-bottom">
+                      <StackedHeader text={wh.name} className="font-bold" />
                     </th>
-                    <th className="px-5 py-3.5 text-center">
-                      <div className="font-bold">Last change</div>
-                      <div className="mt-0.5 text-[10px] font-semibold normal-case tracking-normal text-orange-600/80">
-                        {wh.code}
+                    <th className="px-4 py-3.5 text-left align-bottom">
+                      <div className="whitespace-nowrap font-bold">Last change</div>
+                      <div className="mt-0.5 whitespace-nowrap text-[10px] font-semibold normal-case tracking-normal text-orange-600/80">
+                        {wh.name}
                       </div>
                     </th>
                   </Fragment>
                 ))}
-                <th className="px-5 py-3.5 text-right">Total</th>
-                <th className="px-5 py-3.5 text-left">Last updated</th>
-                <th className="sticky right-0 z-10 bg-orange-50 px-5 py-3.5 text-right">
+                <th className="px-4 py-3.5 text-left align-bottom">Total</th>
+                <th className="sticky right-0 z-10 whitespace-nowrap bg-orange-50 px-4 py-3.5 text-right align-bottom">
                   Actions
                 </th>
               </tr>
@@ -343,12 +483,6 @@ function StockView({
                     product.locations.map((loc) => [loc.warehouseId, loc])
                   );
                   const stockedLocations = product.locations.filter((loc) => loc.quantity > 0);
-                  const lastUpdated = product.locations.reduce<string | null>((latest, loc) => {
-                    if (!latest || new Date(loc.updatedAt) > new Date(latest)) {
-                      return loc.updatedAt;
-                    }
-                    return latest;
-                  }, null);
                   return (
                     <tr
                       key={product.productId}
@@ -356,7 +490,7 @@ function StockView({
                         index % 2 === 0 ? "bg-white" : "bg-stone-50/40"
                       }`}
                     >
-                      <td className="sticky left-0 z-10 bg-inherit px-5 py-3.5 font-semibold text-stone-900">
+                      <td className="sticky left-0 z-10 bg-inherit px-4 py-3.5 font-semibold text-stone-900">
                         {stockedLocations[0] ? (
                           <ButtonLink
                             href={AUTH_ROUTES.adminInventoryItem(
@@ -373,44 +507,55 @@ function StockView({
                           product.productName
                         )}
                       </td>
-                      <td className="px-5 py-3.5 text-stone-600">{product.brandName}</td>
+                      <td className="px-4 py-3.5 text-stone-600">
+                        {formatSecondaryName(product.secondaryProductName)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3.5 text-stone-600">{product.brandName}</td>
                       {warehouseColumns.map((wh) => {
                         const loc = locationByWarehouse.get(wh.warehouseId);
                         return (
                           <Fragment key={wh.warehouseId}>
-                            <td className="px-5 py-3.5 text-center">
+                            <td className="px-4 py-3.5 text-left">
                               {loc ? (
-                                <span className="text-lg font-bold tabular-nums text-stone-900">
-                                  {loc.quantity.toLocaleString()}
-                                </span>
+                                <StockQuantityDisplay
+                                  quantity={loc.quantity}
+                                  stockUnit={product.stockUnit}
+                                  unitsPerStockUnit={product.unitsPerStockUnit}
+                                  size="lg"
+                                  align="left"
+                                />
                               ) : (
                                 <span className="text-base font-medium text-stone-300">—</span>
                               )}
                             </td>
-                            <td className="px-5 py-3.5 text-center">
-                              <LastChangeCell change={loc?.lastChange} />
+                            <td className="px-4 py-3.5 text-left">
+                              <LastChangeCell
+                                change={loc?.lastChange}
+                                updatedAt={loc?.updatedAt}
+                                stockUnit={product.stockUnit}
+                                unitsPerStockUnit={product.unitsPerStockUnit}
+                              />
                             </td>
                           </Fragment>
                         );
                       })}
-                      <td className="px-5 py-3.5 text-right text-lg font-bold tabular-nums text-orange-800">
-                        {product.totalQuantity.toLocaleString()}
+                      <td className="px-4 py-3.5 text-left">
+                        <StockQuantityDisplay
+                          quantity={product.totalQuantity}
+                          stockUnit={product.stockUnit}
+                          unitsPerStockUnit={product.unitsPerStockUnit}
+                          size="md"
+                          align="left"
+                          className="text-orange-800 [&_span:first-child]:!text-orange-800"
+                        />
                       </td>
-                      <td className="whitespace-nowrap px-5 py-3.5 text-sm text-stone-500">
-                        {lastUpdated
-                          ? new Date(lastUpdated).toLocaleString("en-IN", {
-                              dateStyle: "short",
-                              timeStyle: "short",
-                            })
-                          : "—"}
-                      </td>
-                      <td className="sticky right-0 z-10 bg-inherit px-5 py-3.5 text-right">
-                        <div className="flex flex-col items-end gap-2">
+                      <td className="sticky right-0 z-10 w-px bg-inherit px-4 py-3.5 align-top">
+                        <div className="flex flex-col items-stretch gap-2">
                           <ButtonLink
                             href={AUTH_ROUTES.adminReturn}
                             variant="outline"
                             size="sm"
-                            className="!min-h-8 !border-emerald-200 !text-emerald-800 hover:!bg-emerald-50"
+                            className="!min-h-8 !justify-center !border-emerald-200 !text-emerald-800 hover:!bg-emerald-50"
                           >
                             Return
                           </ButtonLink>
@@ -419,31 +564,33 @@ function StockView({
                             return (
                               <div
                                 key={loc.warehouseId}
-                                className="flex flex-wrap items-center justify-end gap-1.5"
+                                className="flex items-center justify-between gap-2 rounded-lg border border-stone-100 bg-stone-50/60 px-2 py-1.5"
                               >
-                                <span className="text-[10px] font-bold uppercase tracking-wide text-stone-400">
+                                <span className="whitespace-nowrap text-[10px] font-bold uppercase tracking-wide text-stone-400">
                                   {loc.warehouseCode}
                                 </span>
-                                <ButtonLink
-                                  href={AUTH_ROUTES.adminInventoryItem(
-                                    loc.warehouseId,
-                                    product.productId
-                                  )}
-                                  variant="ghost"
-                                  size="sm"
-                                  className="!min-h-8 !px-2 !py-1 !text-xs"
-                                >
-                                  History
-                                </ButtonLink>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  className="!min-h-8 !px-2 !py-1 !text-xs"
-                                  onClick={() => setEditing(stockRow)}
-                                >
-                                  Update
-                                </Button>
+                                <div className="flex items-center gap-1">
+                                  <ButtonLink
+                                    href={AUTH_ROUTES.adminInventoryItem(
+                                      loc.warehouseId,
+                                      product.productId
+                                    )}
+                                    variant="ghost"
+                                    size="sm"
+                                    className="!min-h-8 !px-2 !py-1 !text-xs"
+                                  >
+                                    History
+                                  </ButtonLink>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="!min-h-8 !px-2 !py-1 !text-xs"
+                                    onClick={() => setEditing(stockRow)}
+                                  >
+                                    Update
+                                  </Button>
+                                </div>
                               </div>
                             );
                           })}
@@ -456,6 +603,158 @@ function StockView({
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className="space-y-3 md:hidden">
+        {products.length === 0 ? (
+          <div className="rounded-2xl border border-stone-200 bg-white px-5 py-10 text-center text-base font-medium text-stone-400">
+            No stock on hand
+          </div>
+        ) : (
+          products.map((product) => {
+            const locationByWarehouse = new Map(
+              product.locations.map((loc) => [loc.warehouseId, loc])
+            );
+            const stockedLocations = product.locations.filter((loc) => loc.quantity > 0);
+            const lastUpdated = product.locations.reduce<string | null>((latest, loc) => {
+              if (!latest || new Date(loc.updatedAt) > new Date(latest)) {
+                return loc.updatedAt;
+              }
+              return latest;
+            }, null);
+            return (
+              <div
+                key={product.productId}
+                className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-3 border-b border-stone-100 bg-stone-50/60 px-4 py-3">
+                  <div className="min-w-0">
+                    {stockedLocations[0] ? (
+                      <ButtonLink
+                        href={AUTH_ROUTES.adminInventoryItem(
+                          stockedLocations[0].warehouseId,
+                          product.productId
+                        )}
+                        variant="ghost"
+                        size="sm"
+                        className="!h-auto !min-h-0 !px-0 !py-0 !text-base !font-bold !text-stone-900 hover:!text-orange-800 hover:!underline"
+                      >
+                        {product.productName}
+                      </ButtonLink>
+                    ) : (
+                      <span className="text-base font-bold text-stone-900">
+                        {product.productName}
+                      </span>
+                    )}
+                    <p className="mt-0.5 text-xs text-stone-500">
+                      {product.brandName}
+                      {product.secondaryProductName?.trim()
+                        ? ` · ${product.secondaryProductName}`
+                        : ""}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-orange-600/80">
+                      Total
+                    </p>
+                    <StockQuantityDisplay
+                      quantity={product.totalQuantity}
+                      stockUnit={product.stockUnit}
+                      unitsPerStockUnit={product.unitsPerStockUnit}
+                      size="md"
+                      align="right"
+                      className="text-orange-800 [&_span:first-child]:!text-orange-800"
+                    />
+                  </div>
+                </div>
+
+                <div className="divide-y divide-stone-100">
+                  {warehouseColumns.map((wh) => {
+                    const loc = locationByWarehouse.get(wh.warehouseId);
+                    const stockRow = loc ? toStockRow(product, loc) : null;
+                    return (
+                      <div key={wh.warehouseId} className="px-4 py-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-stone-700">
+                              {wh.name}
+                            </p>
+                            <p className="text-[10px] font-bold uppercase tracking-wide text-stone-400">
+                              {wh.code}
+                            </p>
+                          </div>
+                          {loc ? (
+                            <StockQuantityDisplay
+                              quantity={loc.quantity}
+                              stockUnit={product.stockUnit}
+                              unitsPerStockUnit={product.unitsPerStockUnit}
+                              size="md"
+                              align="right"
+                            />
+                          ) : (
+                            <span className="text-base font-medium text-stone-300">—</span>
+                          )}
+                        </div>
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <LastChangeCell
+                            change={loc?.lastChange}
+                            updatedAt={loc?.updatedAt}
+                            stockUnit={product.stockUnit}
+                            unitsPerStockUnit={product.unitsPerStockUnit}
+                          />
+                          <div className="flex items-center gap-1.5">
+                            <ButtonLink
+                              href={AUTH_ROUTES.adminInventoryItem(
+                                wh.warehouseId,
+                                product.productId
+                              )}
+                              variant="ghost"
+                              size="sm"
+                              className="!min-h-8 !px-2.5 !py-1 !text-xs"
+                            >
+                              History
+                            </ButtonLink>
+                            {stockRow ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="!min-h-8 !px-2.5 !py-1 !text-xs"
+                                onClick={() => setEditing(stockRow)}
+                              >
+                                Update
+                              </Button>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center justify-between gap-3 border-t border-stone-100 px-4 py-3">
+                  <span className="text-[11px] text-stone-400">
+                    Updated{" "}
+                    {lastUpdated
+                      ? new Date(lastUpdated).toLocaleString("en-IN", {
+                          dateStyle: "short",
+                          timeStyle: "short",
+                        })
+                      : "—"}
+                  </span>
+                  <ButtonLink
+                    href={AUTH_ROUTES.adminReturn}
+                    variant="outline"
+                    size="sm"
+                    className="!min-h-8 !border-emerald-200 !text-emerald-800 hover:!bg-emerald-50"
+                  >
+                    Return
+                  </ButtonLink>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
 
       {editing && (
@@ -481,21 +780,47 @@ function AdjustStockDialog({
   onSaved: () => void;
   onError: (message: string) => void;
 }) {
+  const productUnits = { stockUnit: row.stockUnit, unitsPerStockUnit: row.unitsPerStockUnit };
+  const usesUnits = usesStockUnit(productUnits);
+  const initialSplit = splitBaseQuantity(row.quantity, productUnits);
+
+  const [fullUnits, setFullUnits] = useState(String(initialSplit.fullUnits));
+  const [loose, setLoose] = useState(String(initialSplit.loose));
   const [quantity, setQuantity] = useState(String(row.quantity));
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const unitLabel = row.stockUnit?.trim() || "unit";
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const qty = parseInt(quantity, 10);
-    if (Number.isNaN(qty) || qty < 0) {
-      onError("Enter a valid quantity (0 or greater)");
+    let qty: number;
+    if (usesUnits) {
+      const full = parseInt(fullUnits, 10);
+      const looseQty = parseInt(loose, 10);
+      if (Number.isNaN(full) || full < 0 || Number.isNaN(looseQty) || looseQty < 0) {
+        onError("Enter valid carton and loose counts (0 or greater)");
+        return;
+      }
+      const per = row.unitsPerStockUnit ?? 1;
+      if (looseQty >= per) {
+        onError(`Loose pieces must be less than ${per} (1 ${unitLabel})`);
+        return;
+      }
+      qty = stockUnitsAndLooseToBase(full, looseQty, productUnits);
+    } else {
+      qty = parseInt(quantity, 10);
+      if (Number.isNaN(qty) || qty < 0) {
+        onError("Enter a valid quantity (0 or greater)");
+        return;
+      }
+    }
+    if (reason.trim().length > 0 && reason.trim().length < 3) {
+      onError("Reason must be at least 3 characters if provided");
       return;
     }
-    if (reason.trim().length < 3) {
-      onError("Reason must be at least 3 characters");
-      return;
-    }
+
+    const trimmedReason = reason.trim();
 
     setSaving(true);
     onError("");
@@ -505,7 +830,7 @@ function AdjustStockDialog({
         productId: row.productId,
         brandId: row.brandId,
         quantity: qty,
-        reason: reason.trim(),
+        ...(trimmedReason ? { reason: trimmedReason } : {}),
       });
       onSaved();
       onClose();
@@ -533,27 +858,66 @@ function AdjustStockDialog({
           Update stock quantity
         </h2>
         <p className="mt-1 text-sm text-zinc-600">
-          {row.productName} · {row.brandName} · {row.warehouseName}
+          {row.productName}
+          {row.secondaryProductName?.trim() ? ` · ${row.secondaryProductName}` : ""} ·{" "}
+          {row.brandName} · {row.warehouseName}
         </p>
-        <p className="mt-2 text-sm text-zinc-500">
-          Current: <strong className="text-zinc-900">{row.quantity}</strong> units
-        </p>
+        <div className="mt-2 text-sm text-zinc-500">
+          Current:{" "}
+          <StockQuantityDisplay
+            quantity={row.quantity}
+            stockUnit={row.stockUnit}
+            unitsPerStockUnit={row.unitsPerStockUnit}
+            size="sm"
+            className="mt-1"
+          />
+        </div>
 
         <div className="mt-4 space-y-3">
-          <div>
-            <label className="block text-xs font-medium text-zinc-600">New quantity</label>
-            <input
-              type="number"
-              min={0}
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              className="form-input mt-1 w-full"
-              required
-            />
-          </div>
+          {usesUnits ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-zinc-600">
+                  {pluralizeStockUnit(unitLabel, 2)}
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={fullUnits}
+                  onChange={(e) => setFullUnits(e.target.value)}
+                  className="form-input mt-1 w-full"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-zinc-600">Loose pieces</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={(row.unitsPerStockUnit ?? 1) - 1}
+                  value={loose}
+                  onChange={(e) => setLoose(e.target.value)}
+                  className="form-input mt-1 w-full"
+                  required
+                />
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-medium text-zinc-600">New quantity (pieces)</label>
+              <input
+                type="number"
+                min={0}
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                className="form-input mt-1 w-full"
+                required
+              />
+            </div>
+          )}
           <div>
             <label className="block text-xs font-medium text-zinc-600">
-              Reason (required for audit)
+              Reason (optional)
             </label>
             <textarea
               value={reason}
@@ -561,7 +925,6 @@ function AdjustStockDialog({
               rows={3}
               placeholder="e.g. Physical count correction, damaged goods write-off"
               className="form-input mt-1 w-full resize-y"
-              required
             />
           </div>
         </div>
@@ -586,7 +949,8 @@ function MovementsView({ movements }: { movements: StockMovement[] }) {
         <DataTableHead>
           <DataTableTh>Date</DataTableTh>
           <DataTableTh>Type</DataTableTh>
-          <DataTableTh>Product</DataTableTh>
+          <DataTableTh>Primary name</DataTableTh>
+          <DataTableTh>Secondary name</DataTableTh>
           <DataTableTh>Brand</DataTableTh>
           <DataTableTh>Warehouse</DataTableTh>
           <DataTableTh>Details</DataTableTh>
@@ -595,7 +959,7 @@ function MovementsView({ movements }: { movements: StockMovement[] }) {
         <DataTableBody>
           {movements.length === 0 ? (
             <tr>
-              <td colSpan={7} className="px-4 py-10 text-center text-zinc-500">
+              <td colSpan={8} className="px-4 py-10 text-center text-zinc-500">
                 No movements
               </td>
             </tr>
@@ -620,6 +984,9 @@ function MovementsView({ movements }: { movements: StockMovement[] }) {
                   </span>
                 </DataTableTd>
                 <DataTableTd className="font-medium">{m.product?.name}</DataTableTd>
+                <DataTableTd className="text-zinc-600">
+                  {formatSecondaryName(m.product?.secondaryName)}
+                </DataTableTd>
                 <DataTableTd className="text-zinc-600">{m.brand?.name}</DataTableTd>
                 <DataTableTd>{m.warehouse?.code}</DataTableTd>
                 <DataTableTd className="max-w-xs truncate text-xs text-zinc-500">
@@ -644,22 +1011,24 @@ function LowStockView({ data }: { data: LowStockResponse }) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-zinc-600">
-        Items with quantity ≤ <strong>{data.threshold}</strong> —{" "}
+        Products at or below their admin-set threshold —{" "}
         <strong>{data.count}</strong> total matching filters
       </p>
       <div className="overflow-hidden rounded-2xl border border-amber-200/80 bg-amber-50/30 shadow-sm">
         <DataTable>
           <DataTableHead>
             <DataTableTh>Warehouse</DataTableTh>
-            <DataTableTh>Product</DataTableTh>
+            <DataTableTh>Primary name</DataTableTh>
+            <DataTableTh>Secondary name</DataTableTh>
             <DataTableTh>Brand</DataTableTh>
+            <DataTableTh align="right">Threshold</DataTableTh>
             <DataTableTh align="right">Quantity</DataTableTh>
           </DataTableHead>
           <DataTableBody>
             {data.items.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-4 py-10 text-center text-zinc-600">
-                  No low-stock items
+                <td colSpan={6} className="px-4 py-10 text-center text-zinc-600">
+                  No low-stock items. Set a threshold on each product in Products.
                 </td>
               </tr>
             ) : (
@@ -669,9 +1038,32 @@ function LowStockView({ data }: { data: LowStockResponse }) {
                     {r.warehouseName} ({r.warehouseCode})
                   </DataTableTd>
                   <DataTableTd className="font-medium">{r.productName}</DataTableTd>
+                  <DataTableTd className="text-zinc-600">
+                    {formatSecondaryName(r.secondaryProductName)}
+                  </DataTableTd>
                   <DataTableTd>{r.brandName}</DataTableTd>
+                  <DataTableTd align="right" className="text-zinc-600">
+                    {r.lowStockThreshold != null ? (
+                      <StockQuantityDisplay
+                        quantity={r.lowStockThreshold}
+                        stockUnit={r.stockUnit}
+                        unitsPerStockUnit={r.unitsPerStockUnit}
+                        size="sm"
+                        align="right"
+                      />
+                    ) : (
+                      "—"
+                    )}
+                  </DataTableTd>
                   <DataTableTd align="right" className="font-semibold text-amber-800">
-                    {r.quantity}
+                    <StockQuantityDisplay
+                      quantity={r.quantity}
+                      stockUnit={r.stockUnit}
+                      unitsPerStockUnit={r.unitsPerStockUnit}
+                      size="md"
+                      align="right"
+                      className="text-amber-800 [&_span:first-child]:!text-amber-800"
+                    />
                   </DataTableTd>
                 </DataTableRow>
               ))

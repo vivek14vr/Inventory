@@ -4,6 +4,7 @@ import { paginationQuerySchema } from "../../shared/pagination/pagination.valida
 
 export const balancesQuerySchema = paginationQuerySchema.extend({
   warehouseId: z.string().optional(),
+  productId: z.string().optional(),
   sortBy: z.enum(["quantity", "productName", "brandName", "updatedAt"]).optional().default("updatedAt"),
 });
 

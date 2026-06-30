@@ -30,7 +30,13 @@ export default function AdminImportsPage() {
   }, []);
 
   useEffect(() => {
-    api.warehouses.list(true).then(setWarehouses).catch(() => {});
+    api.warehouses
+      .list(true)
+      .then(setWarehouses)
+      .catch((err) => {
+        setWarehouses([]);
+        setError(err instanceof ApiError ? err.message : "Failed to load warehouses");
+      });
     loadHistory();
   }, [loadHistory]);
 

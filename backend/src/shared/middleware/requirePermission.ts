@@ -1,6 +1,9 @@
 import type { Request, Response, NextFunction } from "express";
-import type { PermissionCode } from "../constants/permissions.js";
-import { ForbiddenError, UnauthorizedError } from "../errors/AppError.js";
+import {
+  isWarehouseScopedPermission,
+  type PermissionCode,
+} from "../constants/permissions.js";
+import { BadRequestError, ForbiddenError, UnauthorizedError } from "../errors/AppError.js";
 import { assertPermission, hasPermission, isAdmin } from "../utils/permissions.js";
 
 /** Full admin or holder of the given permission (global grants). */
@@ -19,10 +22,19 @@ export function requireAdminOrPermission(code: PermissionCode) {
 }
 
 type WarehouseIdSource = "query" | "body";
+type PermissionMiddlewareOptions = {
+  warehouseIdFrom?: WarehouseIdSource;
+  warehouseIdField?: string;
+  /**
+   * Use only when the route intentionally authorizes "has any scoped access"
+   * and the service then applies its own warehouse filter.
+   */
+  allowScopedWithoutWarehouseId?: boolean;
+};
 
 export function requirePermission(
   code: PermissionCode,
-  options?: { warehouseIdFrom?: WarehouseIdSource; warehouseIdField?: string }
+  options?: PermissionMiddlewareOptions
 ) {
   const field = options?.warehouseIdField ?? "warehouseId";
   const source = options?.warehouseIdFrom ?? "body";
@@ -38,6 +50,15 @@ export function requirePermission(
       const bag = source === "query" ? req.query : req.body;
       const raw = bag?.[field];
       warehouseId = typeof raw === "string" ? raw : undefined;
+    }
+
+    if (
+      isWarehouseScopedPermission(code) &&
+      !warehouseId &&
+      !options?.allowScopedWithoutWarehouseId
+    ) {
+      next(new BadRequestError(`${field} is required`));
+      return;
     }
 
     assertPermission(req.user, code, warehouseId);
@@ -47,7 +68,7 @@ export function requirePermission(
 
 export function requireAnyPermission(
   codes: PermissionCode[],
-  options?: { warehouseIdFrom?: WarehouseIdSource; warehouseIdField?: string }
+  options?: PermissionMiddlewareOptions
 ) {
   const field = options?.warehouseIdField ?? "warehouseId";
   const source = options?.warehouseIdFrom ?? "body";
@@ -63,6 +84,15 @@ export function requireAnyPermission(
       const bag = source === "query" ? req.query : req.body;
       const raw = bag?.[field];
       warehouseId = typeof raw === "string" ? raw : undefined;
+    }
+
+    if (
+      codes.some((code) => isWarehouseScopedPermission(code)) &&
+      !warehouseId &&
+      !options?.allowScopedWithoutWarehouseId
+    ) {
+      next(new BadRequestError(`${field} is required`));
+      return;
     }
 
     const allowed = codes.some((code) =>

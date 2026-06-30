@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { StockInForm } from "@/components/stock/StockInForm";
+import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
 import { SelectionGrid } from "@/components/ui/SelectionGrid";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { api, ApiError } from "@/lib/api/client";
-import type { TransferRecord } from "@/types/stock";
+import { productDisplayName } from "@/lib/products/productDisplayName";
+import type { PendingTransfer, TransferRecord } from "@/types/stock";
 
 type ReturnSource = "choose" | "client" | "warehouse-transfer" | "warehouse-manual";
 
@@ -24,6 +26,7 @@ export function ReturnPanel({
 }: ReturnPanelProps) {
   const [source, setSource] = useState<ReturnSource>("choose");
   const [transfers, setTransfers] = useState<TransferRecord[]>([]);
+  const [pendingIncoming, setPendingIncoming] = useState<PendingTransfer[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -38,20 +41,51 @@ export function ReturnPanel({
         status: "RECEIVED",
         page: 1,
         limit: 50,
+        ...(defaultWarehouseId
+          ? { destinationWarehouseId: defaultWarehouseId }
+          : {}),
       });
-      setTransfers(result.items);
+      // Only transfers received at a warehouse this user can act on are returnable.
+      const items =
+        allowedWarehouseIds && allowedWarehouseIds.length > 0
+          ? result.items.filter((t) =>
+              allowedWarehouseIds.includes(t.destinationWarehouse.id)
+            )
+          : result.items;
+      setTransfers(items);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load transfers");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [defaultWarehouseId, allowedWarehouseIds]);
+
+  const loadPendingIncoming = useCallback(async () => {
+    try {
+      const items = await api.transfers.pending(defaultWarehouseId || undefined);
+      const scoped =
+        allowedWarehouseIds && allowedWarehouseIds.length > 0
+          ? items.filter((t) =>
+              t.destinationWarehouse
+                ? allowedWarehouseIds.includes(t.destinationWarehouse.id)
+                : false
+            )
+          : items;
+      setPendingIncoming(scoped);
+    } catch {
+      // Non-blocking: the warning is best-effort, manual return still works.
+      setPendingIncoming([]);
+    }
+  }, [defaultWarehouseId, allowedWarehouseIds]);
 
   useEffect(() => {
     if (source === "warehouse-transfer") {
       void loadReceivedTransfers();
     }
-  }, [source, loadReceivedTransfers]);
+    if (source === "warehouse-transfer" || source === "warehouse-manual") {
+      void loadPendingIncoming();
+    }
+  }, [source, loadReceivedTransfers, loadPendingIncoming]);
 
   async function confirmTransferReturn(transfer: TransferRecord) {
     setReturningId(transfer.id);
@@ -62,7 +96,7 @@ export function ReturnPanel({
         notes: returnNotes.trim() || undefined,
       });
       setSuccess(
-        `${transfer.quantity} units returned from ${transfer.destinationWarehouse.code} to ${transfer.sourceWarehouse.code}`
+        `${transfer.quantity} pieces returned from ${transfer.destinationWarehouse.code} to ${transfer.sourceWarehouse.code}`
       );
       setReturnNotes("");
       await loadReceivedTransfers();
@@ -130,6 +164,54 @@ export function ReturnPanel({
     return (
       <div className="space-y-5">
         <Alert message={success} type="success" />
+        {pendingIncoming.length > 0 && (
+          <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-5">
+            <p className="text-base font-bold text-amber-900">
+              {pendingIncoming.length} pending incoming transfer
+              {pendingIncoming.length === 1 ? "" : "s"} found
+            </p>
+            <p className="mt-1 text-sm text-amber-800">
+              Manual return adds stock without linking to a transfer. If these goods
+              came from a transfer, use <strong>Return transfer</strong> or receive the
+              transfer instead — a manual return on top of receiving the same goods will
+              double-count stock.
+            </p>
+            <ul className="mt-3 space-y-1.5">
+              {pendingIncoming.slice(0, 5).map((t) => (
+                <li
+                  key={t.id}
+                  className="flex flex-wrap items-center gap-1.5 text-sm text-amber-900"
+                >
+                  <span className="font-semibold">{productDisplayName(t.product)}</span>
+                  <span>· {t.brand.name} ·</span>
+                  <span className="font-mono text-xs font-semibold">
+                    {t.sourceWarehouse.code}
+                  </span>
+                  <span>→</span>
+                  <span className="font-mono text-xs font-semibold">
+                    {t.destinationWarehouse?.code ?? "—"}
+                  </span>
+                  <span>·</span>
+                  <StockQuantityDisplay
+                    quantity={t.quantity}
+                    stockUnit={t.product.stockUnit}
+                    unitsPerStockUnit={t.product.unitsPerStockUnit}
+                    size="sm"
+                  />
+                </li>
+              ))}
+            </ul>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="mt-3"
+              onClick={() => setSource("warehouse-transfer")}
+            >
+              Go to Return transfer
+            </Button>
+          </div>
+        )}
         <StockInForm
           requireWarehouse={requireWarehouse}
           defaultWarehouseId={defaultWarehouseId}
@@ -205,19 +287,24 @@ export function ReturnPanel({
                 >
                   <div>
                     <p className="font-bold text-stone-900">
-                      {t.product.name} · {t.brand.name}
+                      {productDisplayName(t.product)} · {t.brand.name}
                     </p>
-                    <p className="mt-1 text-sm text-stone-600">
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-stone-600">
                       <span className="font-mono text-xs font-semibold">
                         {t.sourceWarehouse.code}
                       </span>
-                      {" → "}
+                      <span>→</span>
                       <span className="font-mono text-xs font-semibold">
                         {t.destinationWarehouse.code}
                       </span>
-                      {" · "}
-                      Qty <strong>{t.quantity}</strong>
-                    </p>
+                      <span>· Qty</span>
+                      <StockQuantityDisplay
+                        quantity={t.quantity}
+                        stockUnit={t.product.stockUnit}
+                        unitsPerStockUnit={t.product.unitsPerStockUnit}
+                        size="sm"
+                      />
+                    </div>
                     <p className="mt-0.5 text-xs text-stone-500">
                       Return sends stock back to {t.sourceWarehouse.name}
                     </p>

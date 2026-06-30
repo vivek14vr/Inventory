@@ -41,8 +41,16 @@ export function buildAppNavGroups(
   ) {
     mainMenu.push({ href: AUTH_ROUTES.appTransfer, label: "Transfer" });
   }
-  if (hasAnyPermission(role, permissions, [Permission.INVENTORY_VIEW])) {
+  if (
+    hasAnyPermission(role, permissions, [
+      Permission.STOCK_VIEW,
+      Permission.INVENTORY_VIEW,
+    ])
+  ) {
     mainMenu.push({ href: AUTH_ROUTES.appInventory, label: "Check Stock" });
+  }
+  if (hasAnyPermission(role, permissions, [Permission.INVENTORY_ADJUST])) {
+    mainMenu.push({ href: AUTH_ROUTES.appInvoices, label: "Invoices" });
   }
   if (hasAnyPermission(role, permissions, [Permission.REPORTS_VIEW])) {
     mainMenu.push({ href: AUTH_ROUTES.appReports, label: "Reports" });

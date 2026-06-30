@@ -186,7 +186,7 @@ export default function AdminDashboardPage() {
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
-              label="Total units"
+              label="Total pieces"
               value={data.totalInventoryUnits.toLocaleString()}
               icon={icons.units}
             />
@@ -204,12 +204,12 @@ export default function AdminDashboardPage() {
               hint={data.pendingTransfers > 0 ? "Awaiting receive" : undefined}
             />
             <StatCard
-              label={`Low stock (≤${data.lowStockThreshold})`}
+              label="Low stock items"
               value={data.lowStockCount}
               variant={data.lowStockCount > 0 ? "warning" : "default"}
               icon={icons.alert}
               hint={
-                data.lowStockCount > 0 ? "Review items below threshold" : undefined
+                data.lowStockCount > 0 ? "At or below product thresholds" : undefined
               }
             />
           </div>
@@ -217,7 +217,6 @@ export default function AdminDashboardPage() {
           <div className="grid gap-6 lg:grid-cols-2">
             <LowStockReportPanel
               items={data.lowStockItems}
-              threshold={data.lowStockThreshold}
               totalCount={data.lowStockCount}
             />
             <TransferActivityPanel items={data.transferActivity} />
@@ -259,7 +258,7 @@ export default function AdminDashboardPage() {
                       </div>
                       <div className="text-right">
                         <p className="font-semibold tabular-nums text-zinc-900">
-                          {w.totalUnits.toLocaleString()} units
+                          {w.totalUnits.toLocaleString()} pieces
                         </p>
                         <p className="text-xs text-zinc-500">{w.skuCount} SKUs</p>
                       </div>

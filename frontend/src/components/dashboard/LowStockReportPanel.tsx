@@ -2,23 +2,19 @@ import Link from "next/link";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Panel } from "@/components/ui/Panel";
 import { AUTH_ROUTES } from "@/lib/auth/constants";
+import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
 import type { AdminDashboard } from "@/types/inventory";
 
 type LowStockReportPanelProps = {
   items: AdminDashboard["lowStockItems"];
-  threshold: number;
   totalCount: number;
 };
 
-export function LowStockReportPanel({
-  items,
-  threshold,
-  totalCount,
-}: LowStockReportPanelProps) {
+export function LowStockReportPanel({ items, totalCount }: LowStockReportPanelProps) {
   return (
     <Panel
       title="Low stock report"
-      description={`Items at or below ${threshold} units`}
+      description="Products at or below their admin-set threshold"
       action={
         <Link
           href={AUTH_ROUTES.adminInventory}
@@ -31,7 +27,7 @@ export function LowStockReportPanel({
       {items.length === 0 ? (
         <EmptyState
           title="All stock levels healthy"
-          description={`No items are at or below the ${threshold}-unit threshold.`}
+          description="No items are at or below their product thresholds."
         />
       ) : (
         <div className="space-y-3">
@@ -46,13 +42,30 @@ export function LowStockReportPanel({
                     {item.productName}
                     <span className="font-normal text-zinc-500"> · {item.brandName}</span>
                   </p>
+                  {item.secondaryProductName?.trim() ? (
+                    <p className="text-xs text-zinc-500">
+                      Secondary: {item.secondaryProductName}
+                    </p>
+                  ) : null}
                   <p className="text-xs text-zinc-500">
                     {item.warehouseName}{" "}
                     <span className="font-mono">({item.warehouseCode})</span>
+                    {item.lowStockThreshold != null ? (
+                      <span className="ml-2 text-amber-700">
+                        threshold ≤ {item.lowStockThreshold}
+                      </span>
+                    ) : null}
                   </p>
                 </div>
-                <span className="shrink-0 rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold tabular-nums text-amber-900">
-                  {item.quantity} left
+                <span className="shrink-0 rounded-full bg-amber-100 px-3 py-1 text-amber-900">
+                  <StockQuantityDisplay
+                    quantity={item.quantity}
+                    stockUnit={item.stockUnit}
+                    unitsPerStockUnit={item.unitsPerStockUnit}
+                    size="sm"
+                    align="right"
+                    className="[&_span:first-child]:!font-semibold"
+                  />
                 </span>
               </li>
             ))}

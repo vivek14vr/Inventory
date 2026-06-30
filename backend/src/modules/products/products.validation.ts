@@ -7,27 +7,31 @@ export const listProductsQuerySchema = paginationQuerySchema.extend({
     .optional()
     .transform((v) => v === "true"),
   brandId: z.string().optional(),
-  sortBy: z.enum(["name", "brand", "createdAt"]).optional().default("name"),
+  sortBy: z.enum(["name", "brand", "createdAt", "lowStockThreshold"]).optional().default("name"),
 });
 
 export const createProductSchema = z.object({
   name: z.string().min(2, "Product name must be at least 2 characters").max(200),
+  secondaryName: z.string().max(200).optional(),
   brandId: z.string().min(1, "Brand is required"),
   stockUnit: z.string().min(1).max(50).optional().default("unit"),
   unitsPerStockUnit: z.coerce
     .number()
     .int()
-    .min(1, "Units per stock unit must be at least 1")
+    .min(1, "Pieces per stock unit must be at least 1")
     .optional()
     .default(1),
+  lowStockThreshold: z.coerce.number().int().min(0).optional(),
   isActive: z.boolean().optional().default(true),
 });
 
 export const updateProductSchema = z.object({
   name: z.string().min(2).max(200).optional(),
+  secondaryName: z.string().max(200).nullable().optional(),
   brandId: z.string().optional(),
   stockUnit: z.string().min(1).max(50).optional(),
   unitsPerStockUnit: z.coerce.number().int().min(1).optional(),
+  lowStockThreshold: z.coerce.number().int().min(0).nullable().optional(),
   isActive: z.boolean().optional(),
 });
 

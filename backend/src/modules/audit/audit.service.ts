@@ -1,5 +1,6 @@
 import { Types } from "mongoose";
 import { AuditLog } from "../../models/AuditLog.js";
+import { User } from "../../models/User.js";
 import { buildDateFilter } from "../reports/reports.utils.js";
 import {
   buildPaginationMeta,
@@ -89,4 +90,19 @@ export async function getAuditSummary() {
       count: a.count,
     })),
   };
+}
+
+export async function listAuditUsers() {
+  const users = await User.find()
+    .select("name email role isActive")
+    .sort({ name: 1 })
+    .lean();
+
+  return users.map((user) => ({
+    id: String(user._id),
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    isActive: user.isActive,
+  }));
 }

@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { StockInForm } from "@/components/stock/StockInForm";
 import { StockOutForm } from "@/components/stock/StockOutForm";
+import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { ButtonSelect } from "@/components/ui/ButtonSelect";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { api, ApiError } from "@/lib/api/client";
+import { productDisplayName } from "@/lib/products/productDisplayName";
 import type { Warehouse } from "@/types/master";
 import type { PendingTransfer } from "@/types/stock";
 
@@ -58,7 +60,13 @@ export function TransferPanel({
 
   useEffect(() => {
     if (!showDestinationFilter) return;
-    api.warehouses.list().then(setWarehouses).catch(() => setWarehouses([]));
+    api.warehouses
+      .list()
+      .then(setWarehouses)
+      .catch((err) => {
+        setWarehouses([]);
+        setError(err instanceof ApiError ? err.message : "Could not load warehouses");
+      });
   }, [showDestinationFilter]);
 
   return (
@@ -149,19 +157,24 @@ export function TransferPanel({
                 >
                   <div>
                     <p className="font-bold text-stone-900">
-                      {t.product.name} · {t.brand.name}
+                      {productDisplayName(t.product)} · {t.brand.name}
                     </p>
-                    <p className="mt-1 text-sm text-stone-600">
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-stone-600">
                       <span className="font-mono text-xs font-semibold text-stone-800">
                         {t.sourceWarehouse.code}
                       </span>
-                      {" → "}
+                      <span>→</span>
                       <span className="font-mono text-xs font-semibold text-stone-800">
                         {t.destinationWarehouse?.code ?? "?"}
                       </span>
-                      {" · "}
-                      Qty <strong>{t.quantity}</strong>
-                    </p>
+                      <span>· Qty</span>
+                      <StockQuantityDisplay
+                        quantity={t.quantity}
+                        stockUnit={t.product.stockUnit}
+                        unitsPerStockUnit={t.product.unitsPerStockUnit}
+                        size="sm"
+                      />
+                    </div>
                     {t.destinationWarehouse && (
                       <p className="mt-0.5 text-xs text-stone-500">
                         Receive at {t.destinationWarehouse.name}

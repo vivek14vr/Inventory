@@ -34,17 +34,19 @@ import type {
   UpdateMovementInvoiceInput,
 } from "./inventory.validation.js";
 
-const DEFAULT_LOW_STOCK_THRESHOLD = 10;
-
 export type StockRow = {
   warehouseId: string;
   warehouseName: string;
   warehouseCode: string;
   productId: string;
   productName: string;
+  secondaryProductName?: string;
   brandId: string;
   brandName: string;
   quantity: number;
+  stockUnit: string;
+  unitsPerStockUnit: number;
+  lowStockThreshold?: number;
   updatedAt: Date;
 };
 
@@ -63,9 +65,9 @@ async function fetchStockRows(query: StockFilters): Promise<StockRow[]> {
       "warehouseId",
       "name code"
     )
-    .populate<{ productId: { _id: Types.ObjectId; name: string; brandId: Types.ObjectId } }>({
+    .populate<{ productId: { _id: Types.ObjectId; name: string; secondaryName?: string; lowStockThreshold?: number; stockUnit?: string; unitsPerStockUnit?: number; brandId: Types.ObjectId } }>({
       path: "productId",
-      select: "name brandId",
+      select: "name secondaryName lowStockThreshold stockUnit unitsPerStockUnit brandId",
       populate: { path: "brandId", select: "name" },
     })
     .sort({ updatedAt: -1 })
@@ -80,6 +82,10 @@ async function fetchStockRows(query: StockFilters): Promise<StockRow[]> {
     const product = b.productId as unknown as {
       _id: Types.ObjectId;
       name: string;
+      secondaryName?: string;
+      lowStockThreshold?: number;
+      stockUnit?: string;
+      unitsPerStockUnit?: number;
       brandId: { _id: Types.ObjectId; name: string };
     };
     const warehouse = b.warehouseId as unknown as {
@@ -94,9 +100,13 @@ async function fetchStockRows(query: StockFilters): Promise<StockRow[]> {
       warehouseCode: warehouse.code,
       productId: String(product._id),
       productName: product.name,
+      secondaryProductName: product.secondaryName,
       brandId: String(product.brandId._id),
       brandName: product.brandId.name,
       quantity: b.quantity,
+      stockUnit: product.stockUnit ?? "unit",
+      unitsPerStockUnit: product.unitsPerStockUnit ?? 1,
+      lowStockThreshold: product.lowStockThreshold,
       updatedAt: b.updatedAt,
     });
   }
@@ -130,8 +140,11 @@ export type StockProductLocation = {
 export type StockProductRow = {
   productId: string;
   productName: string;
+  secondaryProductName?: string;
   brandId: string;
   brandName: string;
+  stockUnit: string;
+  unitsPerStockUnit: number;
   locations: StockProductLocation[];
   totalQuantity: number;
 };
@@ -146,8 +159,11 @@ function groupStockByProduct(rows: StockRow[]): StockProductRow[] {
       map.set(r.productId, {
         productId: r.productId,
         productName: r.productName,
+        secondaryProductName: r.secondaryProductName,
         brandId: r.brandId,
         brandName: r.brandName,
+        stockUnit: r.stockUnit,
+        unitsPerStockUnit: r.unitsPerStockUnit,
         locations: [],
         totalQuantity: 0,
       });
@@ -225,6 +241,7 @@ export async function listCurrentStock(query: StockQuery) {
   let rows = await fetchStockRows(query);
   rows = filterBySearch(rows, query.search, [
     (r) => r.productName,
+    (r) => r.secondaryProductName ?? "",
     (r) => r.brandName,
     (r) => r.warehouseName,
     (r) => r.warehouseCode,
@@ -245,6 +262,8 @@ export async function listCurrentStock(query: StockQuery) {
       productName: string;
       brandId: string;
       brandName: string;
+      stockUnit: string;
+      unitsPerStockUnit: number;
       totalUnits: number;
     }
   >();
@@ -281,6 +300,8 @@ export async function listCurrentStock(query: StockQuery) {
       productName: r.productName,
       brandId: r.brandId,
       brandName: r.brandName,
+      stockUnit: r.stockUnit,
+      unitsPerStockUnit: r.unitsPerStockUnit,
       totalUnits: r.quantity,
     });
   }
@@ -308,8 +329,11 @@ export async function listCurrentStock(query: StockQuery) {
       warehouseCode: loc.warehouseCode,
       productId: p.productId,
       productName: p.productName,
+      secondaryProductName: p.secondaryProductName,
       brandId: p.brandId,
       brandName: p.brandName,
+      stockUnit: p.stockUnit,
+      unitsPerStockUnit: p.unitsPerStockUnit,
       quantity: loc.quantity,
       updatedAt: loc.updatedAt,
     }))
@@ -355,7 +379,7 @@ type MovementDoc = {
 };
 
 function mapMovementRow(m: MovementDoc) {
-  const product = m.productId as { _id: Types.ObjectId; name: string };
+  const product = m.productId as { _id: Types.ObjectId; name: string; secondaryName?: string };
   const brand = m.brandId as { _id: Types.ObjectId; name: string };
   const warehouse = m.warehouseId as {
     _id: Types.ObjectId;
@@ -377,7 +401,7 @@ function mapMovementRow(m: MovementDoc) {
     notes: m.notes,
     invoiceLastWorkedAt: m.invoiceLastWorkedAt?.toISOString(),
     transferId: m.transferId ? String(m.transferId) : undefined,
-    product: { id: String(product._id), name: product.name },
+    product: { id: String(product._id), name: product.name, secondaryName: product.secondaryName },
     brand: { id: String(brand._id), name: brand.name },
     warehouse: {
       id: String(warehouse._id),
@@ -529,7 +553,7 @@ export async function getStockItemDetail(query: StockItemDetailQuery) {
 
   const allMovements = (await StockMovement.find(movementFilter)
     .sort({ createdAt: -1 })
-    .populate("productId", "name")
+    .populate("productId", "name secondaryName")
     .populate("brandId", "name")
     .populate("warehouseId", "name code")
     .populate("destinationWarehouseId", "name code")
@@ -563,8 +587,11 @@ export async function getStockItemDetail(query: StockItemDetailQuery) {
       warehouseCode: whDoc.code,
       productId: query.productId,
       productName: product.name,
+      secondaryProductName: product.secondaryName,
       brandId: String(brand._id),
       brandName: brand.name,
+      stockUnit: product.stockUnit ?? "unit",
+      unitsPerStockUnit: product.unitsPerStockUnit ?? 1,
       quantity: currentQuantity,
       updatedAt: balance?.updatedAt ?? null,
     },
@@ -612,7 +639,7 @@ export async function listMovementHistory(query: MovementsQuery) {
       .sort(sortField)
       .skip(skip)
       .limit(limit)
-      .populate("productId", "name")
+      .populate("productId", "name secondaryName")
       .populate("brandId", "name")
       .populate("warehouseId", "name code")
       .populate("destinationWarehouseId", "name code")
@@ -628,20 +655,25 @@ export async function listMovementHistory(query: MovementsQuery) {
 }
 
 export async function listLowStock(query: LowStockQuery) {
-  const threshold = query.threshold ?? DEFAULT_LOW_STOCK_THRESHOLD;
   const rows = await fetchStockRows({
     warehouseId: query.warehouseId,
     includeZero: false,
   });
-  let lowItems = rows
-    .filter((r) => r.quantity > 0 && r.quantity <= threshold)
-    .filter(
-      (r) =>
-        !query.search?.trim() ||
-        [r.productName, r.brandName, r.warehouseName, r.warehouseCode].some((s) =>
-          s.toLowerCase().includes(query.search!.trim().toLowerCase())
-        )
-    );
+
+  let lowItems = rows.filter((r) => {
+    if (r.lowStockThreshold === undefined || r.lowStockThreshold === null) {
+      return false;
+    }
+    return r.quantity > 0 && r.quantity <= r.lowStockThreshold;
+  });
+
+  lowItems = lowItems.filter(
+    (r) =>
+      !query.search?.trim() ||
+      [r.productName, r.secondaryProductName ?? "", r.brandName, r.warehouseName, r.warehouseCode].some(
+        (s) => s.toLowerCase().includes(query.search!.trim().toLowerCase())
+      )
+  );
 
   lowItems = sortRows(
     lowItems,
@@ -652,13 +684,13 @@ export async function listLowStock(query: LowStockQuery) {
       productName: (r) => r.productName,
       brandName: (r) => r.brandName,
       warehouseName: (r) => r.warehouseName,
+      lowStockThreshold: (r) => r.lowStockThreshold ?? 0,
     }
   );
 
   const { items, pagination } = paginateArray(lowItems, query);
 
   return {
-    threshold,
     count: lowItems.length,
     items,
     pagination,
@@ -685,14 +717,13 @@ export async function getAdminDashboard() {
       })
         .sort({ createdAt: -1 })
         .limit(5)
-        .populate("productId", "name")
+        .populate("productId", "name secondaryName")
         .populate("brandId", "name")
         .populate("warehouseId", "name code")
         .lean(),
     ]);
 
   const lowStock = await listLowStock({
-    threshold: DEFAULT_LOW_STOCK_THRESHOLD,
     page: 1,
     limit: 10,
     sortBy: "quantity",
@@ -702,7 +733,7 @@ export async function getAdminDashboard() {
   const recentTransfers = await Transfer.find()
     .sort({ createdAt: -1 })
     .limit(15)
-    .populate("productId", "name")
+    .populate("productId", "name secondaryName")
     .populate("brandId", "name")
     .populate("sourceWarehouseId", "name code")
     .populate("destinationWarehouseId", "name code")
@@ -763,16 +794,19 @@ export async function getAdminDashboard() {
     warehouseCount: warehouses.length,
     pendingTransfers,
     lowStockCount: lowStock.count,
-    lowStockThreshold: lowStock.threshold,
     lowStockItems: lowStock.items.map((row) => ({
       warehouseId: row.warehouseId,
       warehouseName: row.warehouseName,
       warehouseCode: row.warehouseCode,
       productId: row.productId,
       productName: row.productName,
+      secondaryProductName: row.secondaryProductName,
       brandId: row.brandId,
       brandName: row.brandName,
       quantity: row.quantity,
+      lowStockThreshold: row.lowStockThreshold,
+      stockUnit: row.stockUnit,
+      unitsPerStockUnit: row.unitsPerStockUnit,
     })),
     transferActivity,
     warehouseSummaries: stockSummary.byWarehouse,
@@ -824,10 +858,11 @@ export async function adjustStockBalance(input: AdjustStockInput, user: AuthUser
     throw new NotFoundError("Warehouse not found");
   }
 
-  const { productId, brandId } = await balanceService.validateProductForBrand(
-    input.productId,
-    input.brandId
-  );
+  const {
+    productId,
+    brandId,
+    name: productName,
+  } = await balanceService.validateProductForBrand(input.productId, input.brandId);
 
   return runInTransaction(async (session) => {
     const { previous, next, delta } = await balanceService.setBalance(
@@ -849,7 +884,9 @@ export async function adjustStockBalance(input: AdjustStockInput, user: AuthUser
             productId,
             brandId,
             quantity: Math.abs(delta),
-            notes: `Admin adjustment: ${input.reason}`,
+            notes: input.reason
+              ? `Admin adjustment: ${input.reason}`
+              : "Admin adjustment",
             createdBy: user.id,
           },
         ],
@@ -865,10 +902,13 @@ export async function adjustStockBalance(input: AdjustStockInput, user: AuthUser
             userId: user.id,
             metadata: {
               warehouseId: input.warehouseId,
+              warehouseName: warehouse.name,
+              warehouseCode: warehouse.code,
               productId: String(productId),
+              productName,
               previous,
               next,
-              reason: input.reason,
+              ...(input.reason ? { reason: input.reason } : {}),
             },
           },
         ],
@@ -899,7 +939,9 @@ export async function listInvoiceMovements(query: InvoiceListQuery) {
   const term = query.search?.trim();
   if (term) {
     const regex = { $regex: term, $options: "i" };
-    const productIds = await Product.find({ name: regex }).distinct("_id");
+    const productIds = await Product.find({
+      $or: [{ name: regex }, { secondaryName: regex }],
+    }).distinct("_id");
     const searchClauses: Record<string, unknown>[] = [
       { invoiceNumber: regex },
       { clientName: regex },
@@ -921,7 +963,7 @@ export async function listInvoiceMovements(query: InvoiceListQuery) {
       .sort(sortField)
       .skip(skip)
       .limit(limit)
-      .populate("productId", "name")
+      .populate("productId", "name secondaryName")
       .populate("brandId", "name")
       .populate("warehouseId", "name code")
       .populate("destinationWarehouseId", "name code")
@@ -970,7 +1012,7 @@ export async function updateMovementInvoice(
 
   if (!invoiceChanged && !clientChanged && !togglingWorked) {
     const unchanged = await StockMovement.findById(movementId)
-      .populate("productId", "name")
+      .populate("productId", "name secondaryName")
       .populate("brandId", "name")
       .populate("warehouseId", "name code")
       .populate("destinationWarehouseId", "name code")
@@ -997,7 +1039,7 @@ export async function updateMovementInvoice(
   await movement.save();
 
   const refreshed = await StockMovement.findById(movementId)
-    .populate("productId", "name")
+    .populate("productId", "name secondaryName")
     .populate("brandId", "name")
     .populate("warehouseId", "name code")
     .populate("destinationWarehouseId", "name code")
@@ -1030,4 +1072,58 @@ export async function updateMovementInvoice(
   }
 
   return row;
+}
+
+export async function deleteSaleInvoice(movementId: string, user: AuthUser) {
+  if (!Types.ObjectId.isValid(movementId)) {
+    throw new BadRequestError("Invalid movement id");
+  }
+
+  return runInTransaction(async (session) => {
+    const movement = await StockMovement.findById(movementId).session(session ?? null);
+    if (!movement) {
+      throw new NotFoundError("Stock movement not found");
+    }
+
+    if (
+      movement.type !== StockMovementType.STOCK_OUT ||
+      movement.dispatchType !== DispatchType.DIRECT_SELLING
+    ) {
+      throw new BadRequestError("Only client sale invoices can be deleted");
+    }
+
+    await balanceService.adjustBalance(
+      String(movement.warehouseId),
+      String(movement.productId),
+      movement.quantity,
+      session
+    );
+
+    const product = await Product.findById(movement.productId).lean();
+    const warehouse = await Warehouse.findById(movement.warehouseId).lean();
+
+    await AuditLog.create(
+      [
+        {
+          action: "INVOICE_DELETED",
+          entity: "StockMovement",
+          entityId: movement._id,
+          userId: user.id,
+          metadata: {
+            movementId: String(movement._id),
+            invoiceNumber: movement.invoiceNumber,
+            clientName: movement.clientName,
+            quantity: movement.quantity,
+            productName: product?.name,
+            warehouseName: warehouse?.name,
+          },
+        },
+      ],
+      dbSession(session)
+    );
+
+    await StockMovement.findByIdAndDelete(movementId).session(session ?? null);
+
+    return { deleted: true, id: movementId };
+  });
 }

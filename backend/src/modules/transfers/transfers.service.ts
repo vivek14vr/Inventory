@@ -1,4 +1,4 @@
-import { Types } from "mongoose";
+import { Types, type PipelineStage } from "mongoose";
 import type mongoose from "mongoose";
 import { AuditLog } from "../../models/AuditLog.js";
 import { StockMovement } from "../../models/StockMovement.js";
@@ -23,10 +23,10 @@ import * as balanceService from "../stock/inventory.service.js";
 import {
   buildPaginationMeta,
   getPaginationParams,
-  mongoSort,
 } from "../../shared/pagination/pagination.js";
 import type {
   TransferHistoryQuery,
+  TransferHistorySortField,
   UpdateTransferStatusInput,
 } from "./transfers.validation.js";
 
@@ -46,7 +46,13 @@ function mapTransfer(t: {
   returnedAt?: Date;
   returnNotes?: string;
 }) {
-  const product = t.productId as unknown as { _id: Types.ObjectId; name: string };
+  const product = t.productId as unknown as {
+    _id: Types.ObjectId;
+    name: string;
+    secondaryName?: string;
+    stockUnit?: string;
+    unitsPerStockUnit?: number;
+  };
   const brand = t.brandId as unknown as { _id: Types.ObjectId; name: string };
   const source = t.sourceWarehouseId as unknown as {
     _id: Types.ObjectId;
@@ -66,7 +72,13 @@ function mapTransfer(t: {
     id: String(t._id),
     quantity: t.quantity,
     status: t.status,
-    product: { id: String(product._id), name: product.name },
+    product: {
+      id: String(product._id),
+      name: product.name,
+      secondaryName: product.secondaryName,
+      stockUnit: product.stockUnit,
+      unitsPerStockUnit: product.unitsPerStockUnit,
+    },
     brand: { id: String(brand._id), name: brand.name },
     sourceWarehouse: {
       id: String(source._id),
@@ -99,7 +111,7 @@ async function transferAuditSnapshot(
   session: mongoose.ClientSession | null
 ) {
   const doc = await Transfer.findById(transferId)
-    .populate("productId", "name")
+    .populate("productId", "name secondaryName stockUnit unitsPerStockUnit")
     .populate("brandId", "name")
     .populate("sourceWarehouseId", "name code")
     .populate("destinationWarehouseId", "name code")
@@ -177,7 +189,7 @@ export async function listPendingTransfers(
 
   const transfers = await Transfer.find(filter)
     .sort({ createdAt: -1 })
-    .populate("productId", "name")
+    .populate("productId", "name secondaryName stockUnit unitsPerStockUnit")
     .populate("brandId", "name")
     .populate("sourceWarehouseId", "name code")
     .populate("destinationWarehouseId", "name code")
@@ -186,7 +198,124 @@ export async function listPendingTransfers(
   return transfers.map((t) => mapTransfer(t));
 }
 
-export async function listTransferHistory(query: TransferHistoryQuery) {
+function defaultTransferHistorySortOrder(
+  sortBy: TransferHistorySortField
+): "asc" | "desc" {
+  if (
+    sortBy === "status" ||
+    sortBy === "productName" ||
+    sortBy === "brandName" ||
+    sortBy === "route"
+  ) {
+    return "asc";
+  }
+  return "desc";
+}
+
+async function fetchTransferHistoryIds(
+  filter: Record<string, unknown>,
+  sortBy: TransferHistorySortField,
+  sortOrder: "asc" | "desc",
+  skip: number,
+  limit: number
+): Promise<Types.ObjectId[]> {
+  const dir = sortOrder === "asc" ? 1 : -1;
+  const pipeline: PipelineStage[] = [{ $match: filter }];
+
+  if (sortBy === "status") {
+    pipeline.push({
+      $addFields: {
+        statusOrder: {
+          $switch: {
+            branches: [
+              { case: { $eq: ["$status", TransferStatus.PENDING] }, then: 0 },
+              { case: { $eq: ["$status", TransferStatus.CANCELLED] }, then: 1 },
+              { case: { $eq: ["$status", TransferStatus.RETURNED] }, then: 2 },
+              { case: { $eq: ["$status", TransferStatus.RECEIVED] }, then: 3 },
+            ],
+            default: 99,
+          },
+        },
+      },
+    });
+    pipeline.push({ $sort: { statusOrder: dir, createdAt: -1 } });
+  } else if (sortBy === "productName") {
+    pipeline.push(
+      {
+        $lookup: {
+          from: "products",
+          localField: "productId",
+          foreignField: "_id",
+          as: "_product",
+        },
+      },
+      { $unwind: { path: "$_product", preserveNullAndEmptyArrays: true } },
+      { $addFields: { _sortKey: { $toLower: { $ifNull: ["$_product.name", ""] } } } },
+      { $sort: { _sortKey: dir, createdAt: -1 } }
+    );
+  } else if (sortBy === "brandName") {
+    pipeline.push(
+      {
+        $lookup: {
+          from: "brands",
+          localField: "brandId",
+          foreignField: "_id",
+          as: "_brand",
+        },
+      },
+      { $unwind: { path: "$_brand", preserveNullAndEmptyArrays: true } },
+      { $addFields: { _sortKey: { $toLower: { $ifNull: ["$_brand.name", ""] } } } },
+      { $sort: { _sortKey: dir, createdAt: -1 } }
+    );
+  } else if (sortBy === "route") {
+    pipeline.push(
+      {
+        $lookup: {
+          from: "warehouses",
+          localField: "sourceWarehouseId",
+          foreignField: "_id",
+          as: "_source",
+        },
+      },
+      { $unwind: { path: "$_source", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "warehouses",
+          localField: "destinationWarehouseId",
+          foreignField: "_id",
+          as: "_dest",
+        },
+      },
+      { $unwind: { path: "$_dest", preserveNullAndEmptyArrays: true } },
+      {
+        $addFields: {
+          _sortKey: {
+            $toLower: {
+              $concat: [
+                { $ifNull: ["$_source.code", ""] },
+                "->",
+                { $ifNull: ["$_dest.code", ""] },
+              ],
+            },
+          },
+        },
+      },
+      { $sort: { _sortKey: dir, createdAt: -1 } }
+    );
+  } else {
+    pipeline.push({ $sort: { [sortBy]: dir } });
+  }
+
+  pipeline.push({ $skip: skip }, { $limit: limit }, { $project: { _id: 1 } });
+
+  const rows = await Transfer.aggregate(pipeline);
+  return rows.map((r) => r._id as Types.ObjectId);
+}
+
+export async function listTransferHistory(
+  query: TransferHistoryQuery,
+  user: AuthUser
+) {
   const filter: Record<string, unknown> = {};
 
   if (query.status) {
@@ -207,27 +336,76 @@ export async function listTransferHistory(query: TransferHistoryQuery) {
       (filter.createdAt as Record<string, Date>).$gte = new Date(query.dateFrom);
     }
     if (query.dateTo) {
-      (filter.createdAt as Record<string, Date>).$lte = new Date(query.dateTo);
+      const end = new Date(query.dateTo);
+      end.setHours(23, 59, 59, 999);
+      (filter.createdAt as Record<string, Date>).$lte = end;
     }
   }
 
-  const { page, limit, skip, sortOrder } = getPaginationParams(query);
-  const sortField = mongoSort(query.sortBy ?? "createdAt", sortOrder);
+  // Warehouse scoping: non-admins without global transfers.manage only see
+  // transfers touching a warehouse they have transfer access to.
+  if (!isAdmin(user) && !hasPermission(user, Permission.TRANSFERS_MANAGE)) {
+    const allowed = [
+      ...new Set([
+        ...getWarehouseIdsForPermission(user, Permission.TRANSFERS_VIEW),
+        ...getWarehouseIdsForPermission(user, Permission.TRANSFERS_RECEIVE),
+      ]),
+    ];
+
+    if (allowed.length === 0) {
+      throw new ForbiddenError("No warehouse access for transfers");
+    }
+
+    const scope = {
+      $or: [
+        { sourceWarehouseId: { $in: allowed } },
+        { destinationWarehouseId: { $in: allowed } },
+      ],
+    };
+
+    if (filter.$or) {
+      filter.$and = [{ $or: filter.$or }, scope];
+      delete filter.$or;
+    } else {
+      Object.assign(filter, scope);
+    }
+  }
+
+  const { page, limit, skip } = getPaginationParams(query);
+  const sortBy = query.sortBy ?? "status";
+  const sortOrder = query.sortOrder ?? defaultTransferHistorySortOrder(sortBy);
+
+  const populateFields = [
+    { path: "productId", select: "name secondaryName stockUnit unitsPerStockUnit" },
+    { path: "brandId", select: "name" },
+    { path: "sourceWarehouseId", select: "name code" },
+    { path: "destinationWarehouseId", select: "name code" },
+    { path: "createdBy", select: "name" },
+    { path: "receivedBy", select: "name" },
+    { path: "returnedBy", select: "name" },
+  ];
 
   const [total, transfers] = await Promise.all([
     Transfer.countDocuments(filter),
-    Transfer.find(filter)
-      .sort(sortField)
-      .skip(skip)
-      .limit(limit)
-      .populate("productId", "name")
-      .populate("brandId", "name")
-      .populate("sourceWarehouseId", "name code")
-      .populate("destinationWarehouseId", "name code")
-      .populate("createdBy", "name")
-      .populate("receivedBy", "name")
-      .populate("returnedBy", "name")
-      .lean(),
+    (async () => {
+      const ids = await fetchTransferHistoryIds(
+        filter,
+        sortBy,
+        sortOrder,
+        skip,
+        limit
+      );
+      if (ids.length === 0) return [];
+
+      const order = new Map(ids.map((id, index) => [String(id), index]));
+      const docs = await Transfer.find({ _id: { $in: ids } })
+        .populate(populateFields)
+        .lean();
+
+      return docs.sort(
+        (a, b) => order.get(String(a._id))! - order.get(String(b._id))!
+      );
+    })(),
   ]);
 
   return {
@@ -257,10 +435,7 @@ export async function updateTransferStatus(
       );
     }
 
-    if (
-      input.status === TransferStatus.CANCELLED ||
-      input.status === TransferStatus.RETURNED
-    ) {
+    if (input.status === TransferStatus.CANCELLED) {
       const newQty = await balanceService.adjustBalance(
         String(transfer.sourceWarehouseId),
         String(transfer.productId),
@@ -268,13 +443,28 @@ export async function updateTransferStatus(
         session
       );
 
-      const isReturn = input.status === TransferStatus.RETURNED;
-      transfer.status = isReturn ? TransferStatus.RETURNED : TransferStatus.CANCELLED;
-      if (isReturn) {
-        transfer.returnedBy = new Types.ObjectId(user.id);
-        transfer.returnedAt = new Date();
-        transfer.returnNotes = input.notes?.trim();
-      }
+      // Compensate the STOCK_OUT created when the transfer was initiated so the
+      // movement ledger stays balanced with the restored source quantity.
+      const [reversalMovement] = await StockMovement.create(
+        [
+          {
+            type: StockMovementType.STOCK_IN,
+            warehouseId: transfer.sourceWarehouseId,
+            productId: transfer.productId,
+            brandId: transfer.brandId,
+            quantity: transfer.quantity,
+            transferId: transfer._id,
+            notes:
+              input.notes?.trim() ||
+              "Stock restored — pending transfer cancelled",
+            createdBy: user.id,
+          },
+        ],
+        dbSession(session)
+      );
+
+      transfer.status = TransferStatus.CANCELLED;
+      transfer.stockReturnInMovementId = reversalMovement._id;
       await transfer.save(dbSession(session));
 
       const snapshot = await transferAuditSnapshot(transfer._id, session);
@@ -282,22 +472,19 @@ export async function updateTransferStatus(
       await AuditLog.create(
         [
           {
-            action: isReturn ? "TRANSFER_RETURNED" : "TRANSFER_CANCELLED",
+            action: "TRANSFER_CANCELLED",
             entity: "Transfer",
             entityId: transfer._id,
             userId: user.id,
             metadata: buildTransferAuditMetadata({
               transferId: transfer._id,
               quantity: transfer.quantity,
-              status: isReturn ? TransferStatus.RETURNED : TransferStatus.CANCELLED,
+              status: TransferStatus.CANCELLED,
               product: snapshot?.product ?? null,
               brand: snapshot?.brand ?? null,
               sourceWarehouse: snapshot?.sourceWarehouse ?? null,
               destinationWarehouse: snapshot?.destinationWarehouse ?? null,
               initiatedBy: snapshot?.initiatedBy ?? null,
-              returnedBy: isReturn
-                ? { _id: new Types.ObjectId(user.id), name: user.name }
-                : undefined,
               extra: {
                 restoredBalance: newQty,
                 notes: input.notes,
@@ -374,7 +561,7 @@ export async function updateTransferStatus(
     }
 
     const updated = await Transfer.findById(transferId)
-      .populate("productId", "name")
+      .populate("productId", "name secondaryName stockUnit unitsPerStockUnit")
       .populate("brandId", "name")
       .populate("sourceWarehouseId", "name code")
       .populate("destinationWarehouseId", "name code")
@@ -394,8 +581,9 @@ function assertCanReturnTransfer(user: AuthUser, transfer: {
   const destId = String(transfer.destinationWarehouseId);
   const allowed =
     hasPermission(user, Permission.TRANSFERS_MANAGE, destId) ||
+    hasPermission(user, Permission.TRANSFERS_RECEIVE, destId) ||
     hasPermission(user, Permission.STOCK_OUT, destId) ||
-    hasPermission(user, Permission.TRANSFERS_RECEIVE, destId);
+    hasPermission(user, Permission.STOCK_IN, destId);
   if (!allowed) {
     throw new ForbiddenError("You do not have permission to return this transfer");
   }
@@ -521,7 +709,7 @@ export async function returnTransfer(
     );
 
     const updated = await Transfer.findById(transferId)
-      .populate("productId", "name")
+      .populate("productId", "name secondaryName stockUnit unitsPerStockUnit")
       .populate("brandId", "name")
       .populate("sourceWarehouseId", "name code")
       .populate("destinationWarehouseId", "name code")
@@ -557,7 +745,7 @@ export async function listTransferActivity(query: {
   const transfers = await Transfer.find(filter)
     .sort({ createdAt: -1 })
     .limit(limit)
-    .populate("productId", "name")
+    .populate("productId", "name secondaryName stockUnit unitsPerStockUnit")
     .populate("brandId", "name")
     .populate("sourceWarehouseId", "name code")
     .populate("destinationWarehouseId", "name code")

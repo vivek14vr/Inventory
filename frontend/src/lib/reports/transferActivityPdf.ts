@@ -1,5 +1,6 @@
 import type { AdminDashboard } from "@/types/inventory";
 import type { TransferActivityReport, TransferRecord } from "@/types/stock";
+import { productDisplayName } from "@/lib/products/productDisplayName";
 import { openPrintWindow } from "@/lib/reports/printReport";
 
 type ActivityRow = AdminDashboard["transferActivity"][number] | TransferRecord;
@@ -25,7 +26,7 @@ function rowProduct(item: ActivityRow): string {
     return `${item.product} · ${item.brand as string}`;
   }
   const record = item as TransferRecord;
-  return `${record.product.name} · ${record.brand.name}`;
+  return `${productDisplayName(record.product)} · ${record.brand.name}`;
 }
 
 function rowRoute(item: ActivityRow): string {

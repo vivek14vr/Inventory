@@ -2,11 +2,16 @@ import mongoose, { Schema, type Document, type Model, Types } from "mongoose";
 
 export interface IProduct extends Document {
   name: string;
+  /** Case-insensitive duplicate check key for primary name within a brand. */
+  nameNormalized: string;
+  secondaryName?: string;
   brandId: Types.ObjectId;
   /** Label for the stocking unit, e.g. Carton, Box. */
   stockUnit: string;
   /** How many base units (pieces) are in one stock unit. */
   unitsPerStockUnit: number;
+  /** When set, stock at or below this level appears in low-stock alerts. */
+  lowStockThreshold?: number;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -15,15 +20,24 @@ export interface IProduct extends Document {
 const productSchema = new Schema<IProduct>(
   {
     name: { type: String, required: true, trim: true },
+    nameNormalized: { type: String, trim: true, lowercase: true },
+    secondaryName: { type: String, trim: true },
     brandId: { type: Schema.Types.ObjectId, ref: "Brand", required: true },
     stockUnit: { type: String, trim: true, default: "unit" },
     unitsPerStockUnit: { type: Number, min: 1, default: 1 },
+    lowStockThreshold: { type: Number, min: 0 },
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }
 );
 
-productSchema.index({ brandId: 1, name: 1 }, { unique: true });
+productSchema.index({ brandId: 1, nameNormalized: 1 }, { unique: true });
+
+productSchema.pre("validate", function () {
+  if (this.name) {
+    this.nameNormalized = this.name.trim().toLowerCase();
+  }
+});
 
 export const Product: Model<IProduct> =
   mongoose.models.Product ?? mongoose.model<IProduct>("Product", productSchema);

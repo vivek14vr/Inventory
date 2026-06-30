@@ -1,6 +1,8 @@
 import { Router } from "express";
+import { Permission } from "../../shared/constants/permissions.js";
 import { BadRequestError } from "../../shared/errors/AppError.js";
 import { authenticate } from "../../shared/middleware/authenticate.js";
+import { requireAnyPermission } from "../../shared/middleware/requirePermission.js";
 import { asyncHandler } from "../../shared/utils/asyncHandler.js";
 import { sendSuccess } from "../../shared/utils/apiResponse.js";
 import * as notificationsService from "./notifications.service.js";
@@ -8,7 +10,13 @@ import { notificationListQuerySchema } from "./notifications.validation.js";
 
 const router = Router();
 
-router.use(authenticate);
+router.use(
+  authenticate,
+  requireAnyPermission([
+    Permission.CHECKLISTS_COMPLETE,
+    Permission.CHECKLISTS_MANAGE,
+  ])
+);
 
 router.get(
   "/",

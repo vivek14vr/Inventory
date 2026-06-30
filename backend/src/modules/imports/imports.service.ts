@@ -13,6 +13,10 @@ import {
 } from "../../shared/errors/AppError.js";
 import type { AuthUser } from "../../shared/types/auth.js";
 import { dbSession, runInTransaction } from "../../shared/utils/mongoTransaction.js";
+import {
+  indexProductsByBrandAndLabel,
+  productBrandKey,
+} from "../../shared/utils/productLookup.js";
 import * as inventoryService from "../stock/inventory.service.js";
 
 type ParsedRow = {
@@ -88,10 +92,6 @@ function parseExcelBuffer(buffer: Buffer): ParsedRow[] {
   return rows;
 }
 
-function rowKey(brandName: string, productName: string): string {
-  return `${brandName.toLowerCase()}|${productName.toLowerCase()}`;
-}
-
 export async function processTallyImport(
   fileBuffer: Buffer,
   fileName: string,
@@ -120,12 +120,10 @@ export async function processTallyImport(
     .populate("brandId", "name")
     .lean();
 
-  const productByKey = new Map<string, (typeof products)[0]>();
-  for (const p of products) {
+  const productByKey = indexProductsByBrandAndLabel(products, (p) => {
     const brand = p.brandId as unknown as { name: string };
-    const key = rowKey(brand?.name ?? "", p.name);
-    productByKey.set(key, p);
-  }
+    return brand?.name ?? "";
+  });
 
   let successCount = 0;
   let failedCount = 0;
@@ -159,7 +157,7 @@ export async function processTallyImport(
       continue;
     }
 
-    const dupKey = rowKey(row.brandName, row.productName);
+    const dupKey = productBrandKey(row.brandName, row.productName);
     if (seen.has(dupKey)) {
       results.push({
         ...base,
@@ -182,12 +180,12 @@ export async function processTallyImport(
       continue;
     }
 
-    const product = productByKey.get(rowKey(brand.name, row.productName));
+    const product = productByKey.get(productBrandKey(brand.name, row.productName));
     if (!product) {
       results.push({
         ...base,
         status: "FAILED",
-        message: `Product not found for brand: "${row.productName}" + "${row.brandName}"`,
+        message: `Product not found for brand "${row.brandName}" (use primary or secondary name): "${row.productName}"`,
       });
       failedCount++;
       continue;
@@ -228,7 +226,7 @@ export async function processTallyImport(
       results.push({
         ...base,
         status: "SUCCESS",
-        message: `Deducted ${row.quantity} units`,
+        message: `Deducted ${row.quantity} pieces`,
       });
       successCount++;
     } catch (err) {

@@ -2,6 +2,7 @@ import { Types } from "mongoose";
 import type mongoose from "mongoose";
 import { AuditLog } from "../../models/AuditLog.js";
 import { Brand } from "../../models/Brand.js";
+import { Product } from "../../models/Product.js";
 import { StockMovement } from "../../models/StockMovement.js";
 import { Transfer } from "../../models/Transfer.js";
 import { Warehouse } from "../../models/Warehouse.js";
@@ -23,6 +24,7 @@ import {
   isAdmin,
 } from "../../shared/utils/permissions.js";
 import { resolveWarehouseId } from "../../shared/utils/warehouseAccess.js";
+import { generateInvoiceNumber } from "../../shared/utils/invoiceNumber.js";
 import {
   filterBySearch,
   paginateArray,
@@ -110,10 +112,38 @@ export async function listBalancesForUser(user: AuthUser, query: BalancesQuery) 
     query.warehouseId,
     Permission.STOCK_VIEW
   );
+
+  if (query.productId) {
+    if (!Types.ObjectId.isValid(query.productId)) {
+      throw new BadRequestError("Invalid product ID");
+    }
+    const product = await Product.findById(query.productId)
+      .populate<{ brandId: { _id: Types.ObjectId; name: string } }>("brandId", "name")
+      .lean();
+    if (!product) {
+      throw new NotFoundError("Product not found");
+    }
+    const brand = product.brandId as { _id: Types.ObjectId; name: string };
+    const quantity = await inventoryService.getBalance(warehouseId, query.productId);
+    const row = {
+      productId: query.productId,
+      productName: product.name,
+      secondaryProductName: product.secondaryName,
+      brandId: String(brand._id),
+      brandName: brand.name,
+      stockUnit: product.stockUnit ?? "unit",
+      unitsPerStockUnit: product.unitsPerStockUnit ?? 1,
+      quantity,
+      updatedAt: new Date(),
+    };
+    return paginateArray([row], query);
+  }
+
   const rows = await inventoryService.listBalances(warehouseId);
 
   let filtered = filterBySearch(rows, query.search, [
     (r) => r.productName,
+    (r) => r.secondaryProductName ?? "",
     (r) => r.brandName,
   ]);
   filtered = sortRows(filtered, query.sortBy, query.sortOrder ?? "desc", {
@@ -407,7 +437,8 @@ export async function stockOut(input: StockOutInput, user: AuthUser) {
               : undefined,
           invoiceNumber:
             input.dispatchType === DispatchType.DIRECT_SELLING
-              ? input.invoiceNumber?.trim()
+              ? input.invoiceNumber?.trim() ||
+                (await generateInvoiceNumber())
               : undefined,
           destinationWarehouseId,
           notes: input.notes,

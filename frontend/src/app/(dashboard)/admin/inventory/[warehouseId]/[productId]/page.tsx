@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/DataTable";
 import { usePagination } from "@/hooks/usePagination";
 import type { PaginationMeta } from "@/types/pagination";
+import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
 import type { StockItemDetailResponse } from "@/types/inventory";
 
 type MovementFilter = "" | "STOCK_IN" | "STOCK_OUT";
@@ -109,13 +110,28 @@ export default function InventoryItemDetailPage() {
 
       <PageHeader
         title={item.productName}
-        description={`${item.brandName} · ${item.warehouseName} (${item.warehouseCode})`}
+        description={[
+          item.secondaryProductName?.trim() ? `Secondary: ${item.secondaryProductName}` : null,
+          `${item.brandName} · ${item.warehouseName} (${item.warehouseCode})`,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
       />
 
       {error && <Alert type="error" message={error} />}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="On hand" value={item.quantity.toLocaleString()} />
+        <StatCard
+          label="On hand"
+          valueNode={
+            <StockQuantityDisplay
+              quantity={item.quantity}
+              stockUnit={item.stockUnit}
+              unitsPerStockUnit={item.unitsPerStockUnit}
+              size="lg"
+            />
+          }
+        />
         <StatCard label="Total stock in" value={summary.totalStockIn.toLocaleString()} variant="info" />
         <StatCard label="Total stock out" value={summary.totalStockOut.toLocaleString()} />
         <StatCard label="Movements" value={summary.movementCount.toLocaleString()} />
@@ -201,11 +217,30 @@ export default function InventoryItemDetailPage() {
                         row.change > 0 ? "text-orange-700" : "text-amber-800"
                       }`}
                     >
-                      {row.change > 0 ? "+" : ""}
-                      {row.change.toLocaleString()}
+                      <span className="inline-flex items-center gap-0.5">
+                        {row.change > 0 ? "+" : ""}
+                        <StockQuantityDisplay
+                          quantity={Math.abs(row.change)}
+                          stockUnit={item.stockUnit}
+                          unitsPerStockUnit={item.unitsPerStockUnit}
+                          size="sm"
+                          align="right"
+                          className={
+                            row.change > 0
+                              ? "[&_span]:!text-orange-700"
+                              : "[&_span]:!text-amber-800"
+                          }
+                        />
+                      </span>
                     </DataTableTd>
                     <DataTableTd align="right" className="tabular-nums text-zinc-900">
-                      {row.balanceAfter.toLocaleString()}
+                      <StockQuantityDisplay
+                        quantity={row.balanceAfter}
+                        stockUnit={item.stockUnit}
+                        unitsPerStockUnit={item.unitsPerStockUnit}
+                        size="sm"
+                        align="right"
+                      />
                     </DataTableTd>
                   </DataTableRow>
                 ))

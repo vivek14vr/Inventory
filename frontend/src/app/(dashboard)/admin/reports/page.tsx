@@ -4,8 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
 import { ButtonSelect } from "@/components/ui/ButtonSelect";
+import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
 import type { Brand, Product, Warehouse } from "@/types/master";
 import type { ReportFilters, ReportResult, ReportType } from "@/types/reports";
+
+const META_COLUMNS = new Set(["stockUnit", "unitsPerStockUnit"]);
+const QUANTITY_COLUMNS = new Set(["quantity", "totalUnits", "totalQuantity"]);
 
 const REPORT_OPTIONS: { value: ReportType; label: string }[] = [
   { value: "stock", label: "Current stock" },
@@ -355,20 +359,42 @@ export default function AdminReportsPage() {
                       key={i}
                       className="border-t border-stone-100 transition-colors odd:bg-white even:bg-stone-50/50 hover:bg-orange-50/60"
                     >
-                      {columns.map((col, colIndex) => (
-                        <td
-                          key={col}
-                          className={`px-5 py-3 ${
-                            numericCols.has(col)
-                              ? "text-right font-bold tabular-nums text-stone-900"
-                              : colIndex === 0
-                                ? "font-semibold text-stone-900"
-                                : "text-stone-600"
-                          }`}
-                        >
-                          {formatCell(row[col])}
-                        </td>
-                      ))}
+                      {columns.map((col, colIndex) => {
+                        const unitsPer = Number(row.unitsPerStockUnit);
+                        const showStockUnits =
+                          QUANTITY_COLUMNS.has(col) &&
+                          typeof row[col] === "number" &&
+                          Number.isFinite(unitsPer) &&
+                          unitsPer > 1;
+                        return (
+                          <td
+                            key={col}
+                            className={`px-5 py-3 ${
+                              numericCols.has(col)
+                                ? "text-right font-bold tabular-nums text-stone-900"
+                                : colIndex === 0
+                                  ? "font-semibold text-stone-900"
+                                  : "text-stone-600"
+                            }`}
+                          >
+                            {showStockUnits ? (
+                              <StockQuantityDisplay
+                                quantity={row[col] as number}
+                                stockUnit={
+                                  typeof row.stockUnit === "string"
+                                    ? row.stockUnit
+                                    : undefined
+                                }
+                                unitsPerStockUnit={unitsPer}
+                                size="sm"
+                                align="right"
+                              />
+                            ) : (
+                              formatCell(row[col])
+                            )}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))
                 )}
@@ -398,7 +424,7 @@ function numericColumns(
 
 function getColumns(type: ReportType, result: ReportResult | null): string[] {
   if (!result?.rows.length) return COLUMN_MAP[type];
-  const keys = Object.keys(result.rows[0]);
+  const keys = Object.keys(result.rows[0]).filter((k) => !META_COLUMNS.has(k));
   const preferred = COLUMN_MAP[type].filter((k) => keys.includes(k));
   const rest = keys.filter((k) => !preferred.includes(k));
   return [...preferred, ...rest];

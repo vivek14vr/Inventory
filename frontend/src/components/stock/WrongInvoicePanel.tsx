@@ -41,6 +41,7 @@ export function WrongInvoicePanel() {
   const [drafts, setDrafts] = useState<Record<string, RowDraft>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [flaggingId, setFlaggingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<InvoiceSortField>("createdAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
@@ -184,6 +185,39 @@ export function WrongInvoicePanel() {
     }
   }
 
+  async function deleteRow(movement: StockMovement) {
+    if (movement.type !== "STOCK_OUT") {
+      setError("Only sale invoices can be deleted");
+      return;
+    }
+
+    const label =
+      movement.invoiceNumber?.trim() ||
+      movement.clientName?.trim() ||
+      movement.product?.name ||
+      "this invoice";
+    if (
+      !window.confirm(
+        `Delete invoice for ${label}? Stock (${movement.quantity} pieces) will be restored to the warehouse.`
+      )
+    ) {
+      return;
+    }
+
+    setDeletingId(movement.id);
+    setError("");
+    setSuccess("");
+    try {
+      await api.inventory.deleteInvoice(movement.id);
+      setSuccess(`Deleted invoice and restored stock for ${movement.product?.name ?? "sale"}`);
+      await load(query, page, limit, sortBy, sortOrder);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to delete invoice");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   const lastWorkedId = items.find((m) => m.invoiceLastWorkedAt)?.id;
 
   return (
@@ -194,8 +228,9 @@ export function WrongInvoicePanel() {
       >
         <h2 className="text-xl font-bold text-stone-900">All invoice records</h2>
         <p className="mt-1 text-base text-stone-500">
-          Sales and client returns — with or without an invoice. Type below to narrow the list by
-          invoice number, client name, or product, then edit and save.
+          Sales from Stock Out → Sell to client appear here automatically. Returns are listed
+          too. Type below to narrow by invoice, client, or product, then edit, save, or delete
+          a sale (deleting restores stock).
         </p>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row">
           <div className="relative flex-1">
@@ -293,7 +328,7 @@ export function WrongInvoicePanel() {
                       sortOrder={sortOrder}
                       onSort={handleSort}
                     />
-                    <th className="px-4 py-3 text-right">Save</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -363,6 +398,9 @@ export function WrongInvoicePanel() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="font-semibold text-stone-900">{m.product?.name}</div>
+                          {m.product?.secondaryName?.trim() ? (
+                            <div className="text-xs text-stone-500">{m.product.secondaryName}</div>
+                          ) : null}
                           <div className="text-xs text-stone-500">{m.brand?.name}</div>
                         </td>
                         <td className="px-4 py-3">
@@ -390,15 +428,36 @@ export function WrongInvoicePanel() {
                           />
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <Button
-                            type="button"
-                            size="sm"
-                            loading={savingId === m.id}
-                            disabled={savingId !== null && savingId !== m.id}
-                            onClick={() => void saveRow(m)}
-                          >
-                            Save
-                          </Button>
+                          <div className="flex flex-col items-end gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              loading={savingId === m.id}
+                              disabled={
+                                (savingId !== null && savingId !== m.id) ||
+                                (deletingId !== null && deletingId !== m.id)
+                              }
+                              onClick={() => void saveRow(m)}
+                            >
+                              Save
+                            </Button>
+                            {m.type === "STOCK_OUT" && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                loading={deletingId === m.id}
+                                disabled={
+                                  (deletingId !== null && deletingId !== m.id) ||
+                                  (savingId !== null && savingId !== m.id)
+                                }
+                                className="!border-rose-200 !text-rose-800 hover:!bg-rose-50"
+                                onClick={() => void deleteRow(m)}
+                              >
+                                Delete
+                              </Button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );

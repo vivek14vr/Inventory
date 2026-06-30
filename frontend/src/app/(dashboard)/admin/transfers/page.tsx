@@ -5,6 +5,7 @@ import { api, ApiError } from "@/lib/api/client";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
 import {
   DataTable,
   DataTableBody,
@@ -19,14 +20,35 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Pagination } from "@/components/ui/Pagination";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { usePagination } from "@/hooks/usePagination";
+import { productDisplayName } from "@/lib/products/productDisplayName";
 import type { PaginationMeta } from "@/types/pagination";
 import type { Warehouse } from "@/types/master";
 import type { TransferRecord } from "@/types/stock";
 
 type PendingAction = {
   transfer: TransferRecord;
-  status: "RECEIVED" | "RETURNED";
+  action: "RECEIVE_PENDING" | "CANCEL_PENDING" | "RETURN_RECEIVED";
 };
+
+type SortField =
+  | "status"
+  | "createdAt"
+  | "quantity"
+  | "productName"
+  | "brandName"
+  | "route";
+
+function defaultSortOrder(field: SortField): "asc" | "desc" {
+  if (
+    field === "status" ||
+    field === "productName" ||
+    field === "brandName" ||
+    field === "route"
+  ) {
+    return "asc";
+  }
+  return "desc";
+}
 
 export default function AdminTransfersPage() {
   const [transfers, setTransfers] = useState<TransferRecord[]>([]);
@@ -39,6 +61,8 @@ export default function AdminTransfersPage() {
   const [status, setStatus] = useState("");
   const [sourceId, setSourceId] = useState("");
   const [destId, setDestId] = useState("");
+  const [sortBy, setSortBy] = useState<SortField>("status");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [pagination, setPagination] = useState<PaginationMeta | null>(null);
   const { page, setPage, limit, setLimit, resetPage } = usePagination(20);
 
@@ -50,6 +74,8 @@ export default function AdminTransfersPage() {
         api.transfers.history({
           page,
           limit,
+          sortBy,
+          sortOrder,
           ...(status ? { status } : {}),
           ...(sourceId ? { sourceWarehouseId: sourceId } : {}),
           ...(destId ? { destinationWarehouseId: destId } : {}),
@@ -64,7 +90,17 @@ export default function AdminTransfersPage() {
     } finally {
       setLoading(false);
     }
-  }, [status, sourceId, destId, page, limit]);
+  }, [status, sourceId, destId, page, limit, sortBy, sortOrder]);
+
+  function handleSort(field: SortField) {
+    if (sortBy === field) {
+      setSortOrder((o) => (o === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(field);
+      setSortOrder(defaultSortOrder(field));
+    }
+    resetPage();
+  }
 
   useEffect(() => {
     load();
@@ -72,17 +108,25 @@ export default function AdminTransfersPage() {
 
   async function confirmStatusUpdate() {
     if (!pendingAction) return;
-    const { transfer, status: nextStatus } = pendingAction;
+    const { transfer, action } = pendingAction;
     setUpdatingId(transfer.id);
     setError("");
     setSuccess("");
     try {
-      await api.transfers.updateStatus(transfer.id, { status: nextStatus });
-      setSuccess(
-        nextStatus === "RECEIVED"
-          ? "Transfer marked as received"
-          : `${transfer.quantity} units returned to ${transfer.sourceWarehouse.name}; source warehouse restocked.`
-      );
+      if (action === "RETURN_RECEIVED") {
+        await api.transfers.returnGoods(transfer.id);
+        setSuccess(
+          `${transfer.quantity} pieces returned from ${transfer.destinationWarehouse.name} to ${transfer.sourceWarehouse.name}.`
+        );
+      } else {
+        const nextStatus = action === "RECEIVE_PENDING" ? "RECEIVED" : "CANCELLED";
+        await api.transfers.updateStatus(transfer.id, { status: nextStatus });
+        setSuccess(
+          nextStatus === "RECEIVED"
+            ? "Transfer marked as received"
+            : `${transfer.quantity} pieces restored to ${transfer.sourceWarehouse.name}; transfer cancelled.`
+        );
+      }
       setPendingAction(null);
       load();
     } catch (err) {
@@ -152,12 +196,49 @@ export default function AdminTransfersPage() {
         <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm">
           <DataTable>
             <DataTableHead>
-              <DataTableTh>Date</DataTableTh>
-              <DataTableTh>Product</DataTableTh>
-              <DataTableTh>Brand</DataTableTh>
-              <DataTableTh align="right">Qty</DataTableTh>
-              <DataTableTh>Route</DataTableTh>
-              <DataTableTh>Status</DataTableTh>
+              <SortableTh
+                label="Date"
+                field="createdAt"
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onSort={handleSort}
+              />
+              <SortableTh
+                label="Product"
+                field="productName"
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onSort={handleSort}
+              />
+              <SortableTh
+                label="Brand"
+                field="brandName"
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onSort={handleSort}
+              />
+              <SortableTh
+                label="Qty"
+                field="quantity"
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onSort={handleSort}
+                align="right"
+              />
+              <SortableTh
+                label="Route"
+                field="route"
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onSort={handleSort}
+              />
+              <SortableTh
+                label="Status"
+                field="status"
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onSort={handleSort}
+              />
               <DataTableTh>By</DataTableTh>
               <DataTableTh align="right">Actions</DataTableTh>
             </DataTableHead>
@@ -178,11 +259,17 @@ export default function AdminTransfersPage() {
                       })}
                     </DataTableTd>
                     <DataTableTd className="font-medium text-zinc-900">
-                      {t.product.name}
+                      {productDisplayName(t.product)}
                     </DataTableTd>
                     <DataTableTd className="text-zinc-600">{t.brand.name}</DataTableTd>
-                    <DataTableTd align="right" className="font-semibold tabular-nums">
-                      {t.quantity.toLocaleString()}
+                    <DataTableTd align="right">
+                      <StockQuantityDisplay
+                        quantity={t.quantity}
+                        stockUnit={t.product.stockUnit}
+                        unitsPerStockUnit={t.product.unitsPerStockUnit}
+                        size="sm"
+                        align="right"
+                      />
                     </DataTableTd>
                     <DataTableTd>
                       <span className="inline-flex items-center gap-1.5 text-sm text-zinc-700">
@@ -222,7 +309,10 @@ export default function AdminTransfersPage() {
                             size="sm"
                             disabled={updatingId !== null}
                             onClick={() =>
-                              setPendingAction({ transfer: t, status: "RECEIVED" })
+                              setPendingAction({
+                                transfer: t,
+                                action: "RECEIVE_PENDING",
+                              })
                             }
                           >
                             Receive
@@ -233,12 +323,30 @@ export default function AdminTransfersPage() {
                             size="sm"
                             disabled={updatingId !== null}
                             onClick={() =>
-                              setPendingAction({ transfer: t, status: "RETURNED" })
+                              setPendingAction({
+                                transfer: t,
+                                action: "CANCEL_PENDING",
+                              })
                             }
                           >
-                            Returned
+                            Cancel
                           </Button>
                         </div>
+                      ) : t.status === "RECEIVED" ? (
+                        <Button
+                          type="button"
+                          variant="danger"
+                          size="sm"
+                          disabled={updatingId !== null}
+                          onClick={() =>
+                            setPendingAction({
+                              transfer: t,
+                              action: "RETURN_RECEIVED",
+                            })
+                          }
+                        >
+                          Return
+                        </Button>
                       ) : (
                         <span className="text-xs text-zinc-400">No actions</span>
                       )}
@@ -262,24 +370,68 @@ export default function AdminTransfersPage() {
       {pendingAction && (
         <ConfirmDialog
           title={
-            pendingAction.status === "RECEIVED"
+            pendingAction.action === "RECEIVE_PENDING"
               ? "Mark transfer as received?"
-              : "Mark goods as returned?"
+              : pendingAction.action === "RETURN_RECEIVED"
+                ? "Return received transfer?"
+                : "Cancel pending transfer?"
           }
           description={
-            pendingAction.status === "RECEIVED"
-              ? `${pendingAction.transfer.quantity} units of ${pendingAction.transfer.product.name} will be added to ${pendingAction.transfer.destinationWarehouse.name}.`
-              : `${pendingAction.transfer.quantity} units will be restored to ${pendingAction.transfer.sourceWarehouse.name}. The transfer will be marked as returned.`
+            pendingAction.action === "RECEIVE_PENDING"
+              ? `${pendingAction.transfer.quantity} pieces of ${productDisplayName(pendingAction.transfer.product)} will be added to ${pendingAction.transfer.destinationWarehouse.name}.`
+              : pendingAction.action === "RETURN_RECEIVED"
+                ? `${pendingAction.transfer.quantity} pieces will be removed from ${pendingAction.transfer.destinationWarehouse.name} and restored to ${pendingAction.transfer.sourceWarehouse.name}.`
+                : `${pendingAction.transfer.quantity} pieces will be restored to ${pendingAction.transfer.sourceWarehouse.name}. The transfer will be cancelled.`
           }
           confirmLabel={
-            pendingAction.status === "RECEIVED" ? "Mark received" : "Confirm returned"
+            pendingAction.action === "RECEIVE_PENDING"
+              ? "Mark received"
+              : pendingAction.action === "RETURN_RECEIVED"
+                ? "Confirm returned"
+                : "Cancel transfer"
           }
-          variant={pendingAction.status === "RECEIVED" ? "primary" : "danger"}
+          variant={pendingAction.action === "RECEIVE_PENDING" ? "primary" : "danger"}
           loading={updatingId === pendingAction.transfer.id}
           onCancel={() => setPendingAction(null)}
           onConfirm={confirmStatusUpdate}
         />
       )}
     </div>
+  );
+}
+
+function SortableTh({
+  label,
+  field,
+  sortBy,
+  sortOrder,
+  onSort,
+  align = "left",
+}: {
+  label: string;
+  field: SortField;
+  sortBy: SortField;
+  sortOrder: "asc" | "desc";
+  onSort: (field: SortField) => void;
+  align?: "left" | "right";
+}) {
+  const active = sortBy === field;
+  return (
+    <th className={`px-4 py-3 ${align === "right" ? "text-right" : ""}`}>
+      <button
+        type="button"
+        onClick={() => onSort(field)}
+        className={`inline-flex items-center gap-1 font-semibold uppercase tracking-wider transition hover:text-zinc-800 ${
+          active ? "text-orange-700" : "text-zinc-500"
+        } ${align === "right" ? "ml-auto" : ""}`}
+      >
+        {label}
+        {active && (
+          <span className="text-[10px] normal-case" aria-hidden>
+            {sortOrder === "asc" ? "↑" : "↓"}
+          </span>
+        )}
+      </button>
+    </th>
   );
 }

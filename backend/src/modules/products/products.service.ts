@@ -10,6 +10,7 @@ import {
   getPaginationParams,
   mongoSort,
 } from "../../shared/pagination/pagination.js";
+import { normalizeProductName } from "../../shared/utils/productName.js";
 import type {
   CreateProductInput,
   ListProductsQuery,
@@ -19,9 +20,12 @@ import type {
 type ProductDoc = {
   _id: Types.ObjectId;
   name: string;
+  nameNormalized?: string;
+  secondaryName?: string;
   brandId: Types.ObjectId | { _id: Types.ObjectId; name: string; isActive: boolean };
   stockUnit?: string;
   unitsPerStockUnit?: number;
+  lowStockThreshold?: number;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -33,6 +37,7 @@ export function toPublicProduct(doc: ProductDoc) {
   return {
     id: String(doc._id),
     name: doc.name,
+    secondaryName: doc.secondaryName,
     brandId: String(brand._id ?? doc.brandId),
     brand: {
       id: String(brand._id ?? doc.brandId),
@@ -41,6 +46,7 @@ export function toPublicProduct(doc: ProductDoc) {
     },
     stockUnit: doc.stockUnit ?? "unit",
     unitsPerStockUnit: doc.unitsPerStockUnit ?? 1,
+    lowStockThreshold: doc.lowStockThreshold,
     isActive: doc.isActive,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
@@ -57,6 +63,46 @@ async function validateBrand(brandId: string): Promise<void> {
   }
 }
 
+async function assertUniqueProductLabels(
+  brandId: string,
+  name: string,
+  secondaryName?: string,
+  excludeId?: string
+) {
+  const labels = [name, secondaryName]
+    .map((label) => label?.trim())
+    .filter((label): label is string => Boolean(label))
+    .map((label) => normalizeProductName(label));
+
+  if (new Set(labels).size !== labels.length) {
+    throw new BadRequestError(
+      "Primary and secondary names must be different for the same product"
+    );
+  }
+
+  const filter: Record<string, unknown> = {
+    brandId,
+  };
+  if (excludeId) {
+    filter._id = { $ne: excludeId };
+  }
+
+  const products = await Product.find(filter).select("name secondaryName").lean();
+  const conflict = products.find((product) => {
+    const existingLabels = [product.name, product.secondaryName]
+      .map((label) => label?.trim())
+      .filter((label): label is string => Boolean(label))
+      .map((label) => normalizeProductName(label));
+    return existingLabels.some((label) => labels.includes(label));
+  });
+
+  if (conflict) {
+    throw new BadRequestError(
+      "A product with this primary or secondary name already exists for the selected brand (names are not case sensitive)"
+    );
+  }
+}
+
 export async function listProducts(query: ListProductsQuery) {
   const filter: Record<string, unknown> = {};
   if (!query.includeInactive) {
@@ -69,12 +115,18 @@ export async function listProducts(query: ListProductsQuery) {
     filter.brandId = query.brandId;
   }
   if (query.search?.trim()) {
-    filter.name = { $regex: query.search.trim(), $options: "i" };
+    const term = query.search.trim();
+    filter.$or = [
+      { name: { $regex: term, $options: "i" } },
+      { secondaryName: { $regex: term, $options: "i" } },
+    ];
   }
 
   const { page, limit, skip, sortOrder } = getPaginationParams(query);
   const sortField = mongoSort(
-    query.sortBy === "createdAt" ? "createdAt" : "name",
+    query.sortBy === "createdAt" || query.sortBy === "lowStockThreshold"
+      ? query.sortBy
+      : "name",
     sortOrder
   );
 
@@ -121,23 +173,19 @@ export async function getProductById(id: string) {
 
 export async function createProduct(input: CreateProductInput) {
   await validateBrand(input.brandId);
+  await assertUniqueProductLabels(input.brandId, input.name, input.secondaryName);
 
-  const existing = await Product.findOne({
-    brandId: input.brandId,
-    name: input.name,
-  });
-  if (existing) {
-    throw new BadRequestError(
-      "Product with this name already exists for the selected brand"
-    );
-  }
+  const normalized = normalizeProductName(input.name);
 
   try {
     const product = await Product.create({
-      name: input.name,
+      name: input.name.trim(),
+      nameNormalized: normalized,
+      secondaryName: input.secondaryName?.trim() || undefined,
       brandId: input.brandId,
       stockUnit: input.stockUnit ?? "unit",
       unitsPerStockUnit: input.unitsPerStockUnit ?? 1,
+      lowStockThreshold: input.lowStockThreshold,
       isActive: input.isActive ?? true,
     });
 
@@ -149,7 +197,7 @@ export async function createProduct(input: CreateProductInput) {
   } catch (err: unknown) {
     if ((err as { code?: number }).code === 11000) {
       throw new BadRequestError(
-        "Product with this name already exists for the selected brand"
+        "A product with this primary or secondary name already exists for the selected brand (names are not case sensitive)"
       );
     }
     throw err;
@@ -173,7 +221,12 @@ export async function updateProduct(id: string, input: UpdateProductInput) {
   }
 
   if (input.name) {
-    product.name = input.name;
+    product.name = input.name.trim();
+    product.nameNormalized = normalizeProductName(input.name);
+  }
+
+  if (input.secondaryName !== undefined) {
+    product.secondaryName = input.secondaryName?.trim() || undefined;
   }
 
   if (input.stockUnit !== undefined) {
@@ -184,20 +237,21 @@ export async function updateProduct(id: string, input: UpdateProductInput) {
     product.unitsPerStockUnit = input.unitsPerStockUnit;
   }
 
+  if (input.lowStockThreshold !== undefined) {
+    product.lowStockThreshold =
+      input.lowStockThreshold === null ? undefined : input.lowStockThreshold;
+  }
+
   if (input.isActive !== undefined) {
     product.isActive = input.isActive;
   }
 
-  const duplicate = await Product.findOne({
-    brandId: nextBrandId,
-    name: product.name,
-    _id: { $ne: id },
-  });
-  if (duplicate) {
-    throw new BadRequestError(
-      "Product with this name already exists for the selected brand"
-    );
-  }
+  await assertUniqueProductLabels(
+    nextBrandId,
+    product.name,
+    product.secondaryName,
+    id
+  );
 
   try {
     await product.save();
@@ -208,7 +262,7 @@ export async function updateProduct(id: string, input: UpdateProductInput) {
   } catch (err: unknown) {
     if ((err as { code?: number }).code === 11000) {
       throw new BadRequestError(
-        "Product with this name already exists for the selected brand"
+        "A product with this primary or secondary name already exists for the selected brand (names are not case sensitive)"
       );
     }
     throw err;

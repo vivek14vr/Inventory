@@ -151,4 +151,16 @@ router.patch(
   })
 );
 
+router.delete(
+  "/movements/:movementId/invoice",
+  requireAdminOrPermission(Permission.INVENTORY_ADJUST),
+  asyncHandler(async (req, res) => {
+    const result = await inventoryAdminService.deleteSaleInvoice(
+      String(req.params.movementId),
+      req.user!
+    );
+    sendSuccess(res, result);
+  })
+);
+
 export const inventoryRoutes = router;

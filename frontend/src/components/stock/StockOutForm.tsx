@@ -8,11 +8,13 @@ import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { api, ApiError } from "@/lib/api/client";
 import {
-  formatEnteredQuantityPreview,
-  formatStockUnitHint,
-  stockUnitQuestionLabel,
-  stockUnitsToBase,
+  quantityEntryToBase,
+  type QuantityEntryMode,
 } from "@/lib/products/productUnits";
+import { matchesProductSearch, productPickerSubtitle } from "@/lib/products/productNames";
+import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDisplay";
+import { StockQuantityEntry } from "@/components/stock/StockQuantityEntry";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import type { Brand, Product, Warehouse } from "@/types/master";
 
 type StockOutStep =
@@ -63,6 +65,7 @@ export function StockOutForm({
   const [brandId, setBrandId] = useState("");
   const [productId, setProductId] = useState("");
   const [quantity, setQuantity] = useState("");
+  const [quantityMode, setQuantityMode] = useState<QuantityEntryMode>("stockUnit");
   const [dispatchType, setDispatchType] = useState<"TRANSFER" | "DIRECT_SELLING" | "">(
     forcedDispatch
   );
@@ -70,9 +73,12 @@ export function StockOutForm({
   const [clientName, setClientName] = useState("");
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [notes, setNotes] = useState("");
+  const [productSearch, setProductSearch] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [currentBalance, setCurrentBalance] = useState<number | null>(null);
+  const [loadingBalance, setLoadingBalance] = useState(false);
 
   const resolvedWarehouseId = resolveWarehouseId(
     warehouseId,
@@ -96,26 +102,37 @@ export function StockOutForm({
   const selectedWarehouse = warehouseOptions.find((w) => w.id === resolvedWarehouseId);
   const selectedBrand = brands.find((b) => b.id === brandId);
   const selectedProduct = products.find((p) => p.id === productId);
+  const filteredProducts = products.filter(
+    (p) => p.isActive && matchesProductSearch(p, productSearch)
+  );
   const selectedDestination = destinationOptions.find(
     (w) => w.id === destinationWarehouseId
   );
 
   useEffect(() => {
     setLoadingWarehouses(true);
+    setError("");
     api.warehouses
       .list()
       .then(setWarehouses)
-      .catch(() => setWarehouses([]))
+      .catch((err) => {
+        setWarehouses([]);
+        setError(err instanceof ApiError ? err.message : "Could not load warehouses");
+      })
       .finally(() => setLoadingWarehouses(false));
   }, []);
 
   useEffect(() => {
     if (step === "brand" || step === "product" || step === "dispatch" || step === "destination" || step === "confirm") {
       setLoadingBrands(true);
+      setError("");
       api.brands
         .list()
         .then(setBrands)
-        .catch(() => setBrands([]))
+        .catch((err) => {
+          setBrands([]);
+          setError(err instanceof ApiError ? err.message : "Could not load brands");
+        })
         .finally(() => setLoadingBrands(false));
     }
   }, [step]);
@@ -126,12 +143,50 @@ export function StockOutForm({
       return;
     }
     setLoadingProducts(true);
+    setError("");
     api.products
       .listAll({ brandId })
       .then(setProducts)
-      .catch(() => setProducts([]))
+      .catch((err) => {
+        setProducts([]);
+        setError(err instanceof ApiError ? err.message : "Could not load products");
+      })
       .finally(() => setLoadingProducts(false));
   }, [brandId]);
+
+  useEffect(() => {
+    if (step !== "confirm" || !resolvedWarehouseId || !productId) {
+      setCurrentBalance(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingBalance(true);
+    api.stock
+      .balances({ warehouseId: resolvedWarehouseId, productId })
+      .then((result) => {
+        if (!cancelled) {
+          setCurrentBalance(result.items[0]?.quantity ?? 0);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCurrentBalance(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingBalance(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [step, resolvedWarehouseId, productId]);
+
+  const enteredBaseQty = useMemo(() => {
+    const entered = parseInt(quantity, 10);
+    if (!Number.isFinite(entered) || entered <= 0) return 0;
+    return quantityEntryToBase(entered, quantityMode, selectedProduct);
+  }, [quantity, quantityMode, selectedProduct]);
+
+  const exceedsAvailable =
+    currentBalance !== null && enteredBaseQty > 0 && enteredBaseQty > currentBalance;
 
   function selectWarehouse(id: string) {
     setWarehouseId(id);
@@ -145,6 +200,7 @@ export function StockOutForm({
   function selectBrand(id: string) {
     setBrandId(id);
     setProductId("");
+    setProductSearch("");
     setDispatchType(forcedDispatch);
     setDestinationWarehouseId("");
     setStep("product");
@@ -152,6 +208,8 @@ export function StockOutForm({
 
   function selectProduct(id: string) {
     setProductId(id);
+    setQuantity("");
+    setQuantityMode("stockUnit");
     setDestinationWarehouseId("");
     if (mode === "sell") {
       setDispatchType("DIRECT_SELLING");
@@ -222,6 +280,7 @@ export function StockOutForm({
     setBrandId("");
     setProductId("");
     setQuantity("");
+    setQuantityMode("stockUnit");
     setDispatchType(forcedDispatch);
     setDestinationWarehouseId("");
     setClientName("");
@@ -243,7 +302,7 @@ export function StockOutForm({
     const type = dispatchType || defaultDispatchType;
     try {
       const enteredQty = parseInt(quantity, 10);
-      const baseQty = stockUnitsToBase(enteredQty, selectedProduct);
+      const baseQty = quantityEntryToBase(enteredQty, quantityMode, selectedProduct);
       const result = await api.stock.stockOut({
         ...(resolvedWarehouseId ? { warehouseId: resolvedWarehouseId } : {}),
         brandId,
@@ -262,7 +321,11 @@ export function StockOutForm({
       const msg =
         type === "TRANSFER"
           ? `Transfer sent. Remaining balance: ${result.balance}`
-          : `Sale recorded. Remaining balance: ${result.balance}`;
+          : `Sale recorded${
+              result.movement.invoiceNumber
+                ? ` · Invoice ${result.movement.invoiceNumber}`
+                : ""
+            }. Remaining balance: ${result.balance}`;
       setSuccess(msg);
       onSuccess?.(msg);
       resetFlow();
@@ -332,24 +395,36 @@ export function StockOutForm({
       )}
 
       {step === "product" && (
-        <SelectionGrid
-          title="Select product"
-          subtitle={selectedBrand ? `Brand: ${selectedBrand.name}` : undefined}
-          items={products
-            .filter((p) => p.isActive)
-            .map((p) => ({
+        <div className="space-y-4">
+          <input
+            type="search"
+            value={productSearch}
+            onChange={(e) => setProductSearch(e.target.value)}
+            placeholder="Search primary or secondary name…"
+            className="form-input w-full"
+          />
+          <SelectionGrid
+            title="Select product"
+            subtitle={
+              selectedBrand
+                ? `Brand: ${selectedBrand.name} — same stock for primary or secondary name`
+                : undefined
+            }
+            items={filteredProducts.map((p) => ({
               id: p.id,
               title: p.name,
-              subtitle:
-                p.unitsPerStockUnit > 1
-                  ? `1 ${p.stockUnit} = ${p.unitsPerStockUnit} units`
-                  : undefined,
+              subtitle: productPickerSubtitle(p),
             }))}
-          onSelect={selectProduct}
-          onBack={goBack}
-          loading={loadingProducts}
-          emptyMessage="No products for this brand"
-        />
+            onSelect={selectProduct}
+            onBack={goBack}
+            loading={loadingProducts}
+            emptyMessage={
+              productSearch.trim()
+                ? "No products match your search"
+                : "No products for this brand"
+            }
+          />
+        </div>
       )}
 
       {step === "dispatch" && (
@@ -412,6 +487,9 @@ export function StockOutForm({
             </h2>
             <p className="mt-1 text-base text-stone-500">
               {selectedProduct?.name}
+              {selectedProduct?.secondaryName?.trim()
+                ? ` · ${selectedProduct.secondaryName}`
+                : ""}
               {selectedBrand ? ` · ${selectedBrand.name}` : ""}
               {dispatchType === "TRANSFER" && selectedDestination
                 ? ` · To ${selectedDestination.name}`
@@ -421,37 +499,41 @@ export function StockOutForm({
             </p>
 
             <div className="mt-5 space-y-4">
-              <div>
-                <label className="block text-base font-semibold text-stone-700">
-                  {stockUnitQuestionLabel(selectedProduct)}
-                </label>
-                {formatStockUnitHint(selectedProduct) && (
-                  <p className="mt-1 text-sm text-orange-700">
-                    {formatStockUnitHint(selectedProduct)}
+              {resolvedWarehouseId && selectedProduct ? (
+                <div className="rounded-xl border-2 border-stone-200 bg-stone-50 px-4 py-3">
+                  <p className="text-sm font-semibold text-stone-600">
+                    Available at {selectedWarehouse?.name ?? "warehouse"}
                   </p>
-                )}
-                <input
-                  type="number"
-                  min={1}
-                  required
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  className="form-input mt-2 text-2xl font-bold"
-                  placeholder="0"
-                />
-                {quantity &&
-                  formatEnteredQuantityPreview(
-                    parseInt(quantity, 10),
-                    selectedProduct
-                  ) && (
-                    <p className="mt-2 text-sm font-semibold text-stone-600">
-                      {formatEnteredQuantityPreview(
-                        parseInt(quantity, 10),
-                        selectedProduct
-                      )}
-                    </p>
-                  )}
-              </div>
+                  <div className="mt-1 min-h-8">
+                    {loadingBalance ? (
+                      <LoadingSpinner />
+                    ) : currentBalance !== null ? (
+                      <StockQuantityDisplay
+                        quantity={currentBalance}
+                        stockUnit={selectedProduct.stockUnit}
+                        unitsPerStockUnit={selectedProduct.unitsPerStockUnit}
+                        size="lg"
+                      />
+                    ) : (
+                      <p className="text-sm text-stone-500">Could not load stock level</p>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
+              <StockQuantityEntry
+                product={selectedProduct}
+                quantity={quantity}
+                onQuantityChange={setQuantity}
+                mode={quantityMode}
+                onModeChange={setQuantityMode}
+              />
+
+              {exceedsAvailable ? (
+                <p className="text-sm font-semibold text-red-600">
+                  Not enough stock. Available: {currentBalance?.toLocaleString()} pieces.
+                </p>
+              ) : null}
 
               {dispatchType === "DIRECT_SELLING" && (
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -474,7 +556,11 @@ export function StockOutForm({
                       value={invoiceNumber}
                       onChange={(e) => setInvoiceNumber(e.target.value)}
                       className="form-input mt-2"
+                      placeholder="Auto-generated if left blank"
                     />
+                    <p className="mt-1 text-sm text-stone-500">
+                      Leave blank to auto-generate. The invoice appears on the Invoices page.
+                    </p>
                   </div>
                 </div>
               )}
@@ -491,7 +577,13 @@ export function StockOutForm({
               </div>
             </div>
 
-            <Button type="submit" size="xl" loading={submitting} className="mt-6 w-full">
+            <Button
+              type="submit"
+              size="xl"
+              loading={submitting}
+              disabled={exceedsAvailable}
+              className="mt-6 w-full"
+            >
               {dispatchType === "TRANSFER" ? "Send transfer" : "Record sale"}
             </Button>
           </div>

@@ -21,6 +21,14 @@ router.get(
 );
 
 router.get(
+  "/users",
+  asyncHandler(async (_req, res) => {
+    const users = await auditService.listAuditUsers();
+    sendSuccess(res, users);
+  })
+);
+
+router.get(
   "/",
   asyncHandler(async (req, res) => {
     const parsed = auditLogQuerySchema.safeParse(req.query);

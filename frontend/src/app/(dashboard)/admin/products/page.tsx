@@ -9,12 +9,15 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { usePagination } from "@/hooks/usePagination";
 import type { PaginationMeta } from "@/types/pagination";
 import type { Brand, Product } from "@/types/master";
+import { formatSecondaryName } from "@/lib/products/productNames";
 
 const emptyForm = {
   name: "",
+  secondaryName: "",
   brandId: "",
   stockUnit: "unit",
   unitsPerStockUnit: "1",
+  lowStockThreshold: "",
   editId: null as string | null,
 };
 
@@ -69,17 +72,25 @@ export default function AdminProductsPage() {
       if (form.editId) {
         await api.products.update(form.editId, {
           name: form.name,
+          secondaryName: form.secondaryName.trim() || null,
           brandId: form.brandId,
           stockUnit: form.stockUnit.trim() || "unit",
           unitsPerStockUnit: parseInt(form.unitsPerStockUnit, 10) || 1,
+          lowStockThreshold: form.lowStockThreshold.trim()
+            ? parseInt(form.lowStockThreshold, 10)
+            : null,
         });
         setSuccess("Product updated");
       } else {
         await api.products.create({
           name: form.name,
+          secondaryName: form.secondaryName.trim() || undefined,
           brandId: form.brandId,
           stockUnit: form.stockUnit.trim() || "unit",
           unitsPerStockUnit: parseInt(form.unitsPerStockUnit, 10) || 1,
+          ...(form.lowStockThreshold.trim()
+            ? { lowStockThreshold: parseInt(form.lowStockThreshold, 10) }
+            : {}),
         });
         setSuccess("Product created");
       }
@@ -108,8 +119,8 @@ export default function AdminProductsPage() {
       <div>
         <h1 className="text-2xl font-semibold text-zinc-900">Products</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Unique key: <strong>Product Name + Brand Name</strong>. Set a stock unit (e.g. Carton)
-          and how many pieces it contains.
+          Primary name + brand must be unique (case-insensitive). Optional secondary name for
+          variants. Set a low-stock alert level per product.
         </p>
       </div>
 
@@ -162,13 +173,24 @@ export default function AdminProductsPage() {
           <h2 className="font-medium text-zinc-900">{form.editId ? "Edit product" : "New product"}</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-zinc-700">Product name</label>
+              <label className="block text-sm font-medium text-zinc-700">Primary name</label>
               <input
                 required
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
                 placeholder="e.g. 200ml Glass"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-zinc-700">
+                Secondary name (optional)
+              </label>
+              <input
+                value={form.secondaryName}
+                onChange={(e) => setForm({ ...form, secondaryName: e.target.value })}
+                className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                placeholder="e.g. Green cap"
               />
             </div>
             <ButtonSelect
@@ -195,7 +217,7 @@ export default function AdminProductsPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-zinc-700">
-                Units per stock unit
+                Pieces per stock unit
               </label>
               <input
                 type="number"
@@ -209,7 +231,25 @@ export default function AdminProductsPage() {
                 placeholder="30"
               />
               <p className="mt-1 text-xs text-zinc-500">
-                e.g. 30 means 1 carton = 30 individual units in inventory
+                e.g. 30 means 1 carton = 30 individual pieces in inventory
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-zinc-700">
+                Low stock threshold (optional)
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={form.lowStockThreshold}
+                onChange={(e) =>
+                  setForm({ ...form, lowStockThreshold: e.target.value })
+                }
+                className="form-input mt-1"
+                placeholder="e.g. 50"
+              />
+              <p className="mt-1 text-xs text-zinc-500">
+                Alert when stock falls to this level or below
               </p>
             </div>
           </div>
@@ -230,9 +270,11 @@ export default function AdminProductsPage() {
         <table className="w-full text-left text-sm">
           <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase text-zinc-500">
             <tr>
-              <th className="px-4 py-3">Product</th>
+              <th className="px-4 py-3">Primary name</th>
+              <th className="px-4 py-3">Secondary name</th>
               <th className="px-4 py-3">Brand</th>
               <th className="px-4 py-3">Stock unit</th>
+              <th className="px-4 py-3">Low stock at</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3"></th>
             </tr>
@@ -240,13 +282,13 @@ export default function AdminProductsPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">
+                <td colSpan={7} className="px-4 py-8 text-center text-zinc-500">
                   Loading…
                 </td>
               </tr>
             ) : products.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">
+                <td colSpan={7} className="px-4 py-8 text-center text-zinc-500">
                   No products
                 </td>
               </tr>
@@ -254,11 +296,15 @@ export default function AdminProductsPage() {
               products.map((p) => (
                 <tr key={p.id} className="border-t border-zinc-100">
                   <td className="px-4 py-3 font-medium">{p.name}</td>
+                  <td className="px-4 py-3 text-zinc-600">{formatSecondaryName(p.secondaryName)}</td>
                   <td className="px-4 py-3 text-zinc-600">{p.brand.name}</td>
                   <td className="px-4 py-3 text-zinc-600">
                     {p.unitsPerStockUnit > 1
-                      ? `1 ${p.stockUnit} = ${p.unitsPerStockUnit} units`
-                      : "Per unit"}
+                      ? `${p.unitsPerStockUnit} pieces = 1 ${p.stockUnit}`
+                      : "Per piece"}
+                  </td>
+                  <td className="px-4 py-3 text-zinc-600">
+                    {p.lowStockThreshold != null ? `≤ ${p.lowStockThreshold}` : "—"}
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge active={p.isActive} />
@@ -268,9 +314,12 @@ export default function AdminProductsPage() {
                       onClick={() => {
                         setForm({
                           name: p.name,
+                          secondaryName: p.secondaryName ?? "",
                           brandId: p.brandId,
                           stockUnit: p.stockUnit,
                           unitsPerStockUnit: String(p.unitsPerStockUnit),
+                          lowStockThreshold:
+                            p.lowStockThreshold != null ? String(p.lowStockThreshold) : "",
                           editId: p.id,
                         });
                         setShowForm(true);

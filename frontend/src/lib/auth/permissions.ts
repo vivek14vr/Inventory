@@ -41,6 +41,8 @@ export type PermissionModuleDefinition = {
     code: PermissionCode;
     label: string;
     description?: string;
+    example?: string;
+    warehouseScoped?: boolean;
   }>;
 };
 
@@ -134,7 +136,10 @@ export function getDefaultAppPath(
       codes: [Permission.STOCK_IN, Permission.STOCK_OUT, Permission.STOCK_VIEW],
       path: "/app/stock",
     },
-    { codes: [Permission.INVENTORY_VIEW], path: "/app/inventory" },
+    {
+      codes: [Permission.INVENTORY_VIEW, Permission.INVENTORY_ADJUST],
+      path: "/app/inventory",
+    },
     { codes: [Permission.TRANSFERS_RECEIVE], path: "/app/transfer" },
     { codes: [Permission.TRANSFERS_VIEW], path: "/app/transfers" },
     { codes: [Permission.TRANSFERS_MANAGE], path: "/app/transfers" },
@@ -146,7 +151,7 @@ export function getDefaultAppPath(
     { codes: [Permission.USERS_MANAGE], path: "/app/users" },
     { codes: [Permission.AUDIT_VIEW], path: "/app/audit" },
     { codes: [Permission.CHECKLISTS_COMPLETE], path: "/app/checklists" },
-    { codes: [Permission.CHECKLISTS_MANAGE], path: "/admin/checklists" },
+    { codes: [Permission.CHECKLISTS_MANAGE], path: "/app/checklists" },
   ];
 
   for (const { codes, path } of checks) {
@@ -192,10 +197,21 @@ export const APP_ROUTE_PERMISSIONS: Array<{
     ],
   },
   {
+    prefix: "/app/wrong-invoice",
+    permissions: [Permission.INVENTORY_ADJUST],
+  },
+  {
     prefix: "/app/stock",
     permissions: [Permission.STOCK_IN, Permission.STOCK_OUT, Permission.STOCK_VIEW],
   },
-  { prefix: "/app/inventory", permissions: [Permission.INVENTORY_VIEW, Permission.INVENTORY_ADJUST] },
+  {
+    prefix: "/app/inventory",
+    permissions: [
+      Permission.STOCK_VIEW,
+      Permission.INVENTORY_VIEW,
+      Permission.INVENTORY_ADJUST,
+    ],
+  },
   {
     prefix: "/app/transfers",
     permissions: [
@@ -203,6 +219,10 @@ export const APP_ROUTE_PERMISSIONS: Array<{
       Permission.TRANSFERS_RECEIVE,
       Permission.TRANSFERS_MANAGE,
     ],
+  },
+  {
+    prefix: "/app/notifications",
+    permissions: [Permission.CHECKLISTS_COMPLETE, Permission.CHECKLISTS_MANAGE],
   },
   { prefix: "/app/reports", permissions: [Permission.REPORTS_VIEW] },
   { prefix: "/app/imports", permissions: [Permission.IMPORTS_MANAGE] },
@@ -237,6 +257,7 @@ export function canAccessAppPath(
     .sort((a, b) => b.prefix.length - a.prefix.length)
     .find((r) => pathname === r.prefix || pathname.startsWith(`${r.prefix}/`));
 
-  if (!match) return pathname.startsWith("/app");
+  // Unknown /app/* paths are denied by default (fail closed).
+  if (!match) return false;
   return hasAnyPermission(role, permissions, match.permissions);
 }

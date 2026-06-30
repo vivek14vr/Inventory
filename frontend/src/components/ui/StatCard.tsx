@@ -1,6 +1,7 @@
 type StatCardProps = {
   label: string;
-  value: string | number;
+  value?: string | number;
+  valueNode?: React.ReactNode;
   hint?: React.ReactNode;
   variant?: "default" | "warning" | "success" | "info";
   icon?: React.ReactNode;
@@ -23,6 +24,7 @@ const iconBg = {
 export function StatCard({
   label,
   value,
+  valueNode,
   hint,
   variant = "default",
   icon,
@@ -36,9 +38,9 @@ export function StatCard({
           <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
             {label}
           </p>
-          <p className="mt-2 text-3xl font-semibold tabular-nums tracking-tight text-zinc-900">
-            {value}
-          </p>
+          <div className="mt-2 text-3xl font-semibold tabular-nums tracking-tight text-zinc-900">
+            {valueNode ?? value}
+          </div>
           {hint && <p className="mt-1.5 text-xs text-zinc-500">{hint}</p>}
         </div>
         {icon && (

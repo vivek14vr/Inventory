@@ -111,9 +111,9 @@ export async function validateProductForBrand(
 
 export async function listBalances(warehouseId: string) {
   const balances = await InventoryBalance.find({ warehouseId, quantity: { $gt: 0 } })
-    .populate<{ productId: { _id: Types.ObjectId; name: string; brandId: Types.ObjectId } }>({
+    .populate<{ productId: { _id: Types.ObjectId; name: string; secondaryName?: string; stockUnit?: string; unitsPerStockUnit?: number; brandId: Types.ObjectId } }>({
       path: "productId",
-      select: "name brandId",
+      select: "name secondaryName stockUnit unitsPerStockUnit brandId",
       populate: { path: "brandId", select: "name" },
     })
     .sort({ updatedAt: -1 })
@@ -125,13 +125,19 @@ export async function listBalances(warehouseId: string) {
       const product = b.productId as unknown as {
         _id: Types.ObjectId;
         name: string;
+        secondaryName?: string;
+        stockUnit?: string;
+        unitsPerStockUnit?: number;
         brandId: { _id: Types.ObjectId; name: string };
       };
       return {
         productId: String(product._id),
         productName: product.name,
+        secondaryProductName: product.secondaryName,
         brandId: String(product.brandId._id),
         brandName: product.brandId.name,
+        stockUnit: product.stockUnit ?? "unit",
+        unitsPerStockUnit: product.unitsPerStockUnit ?? 1,
         quantity: b.quantity,
         updatedAt: b.updatedAt,
       };

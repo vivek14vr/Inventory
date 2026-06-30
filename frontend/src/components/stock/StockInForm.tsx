@@ -7,12 +7,13 @@ import { SelectionGrid } from "@/components/ui/SelectionGrid";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { api, ApiError } from "@/lib/api/client";
+import { productDisplayName } from "@/lib/products/productDisplayName";
 import {
-  formatEnteredQuantityPreview,
-  formatStockUnitHint,
-  stockUnitQuestionLabel,
-  stockUnitsToBase,
+  quantityEntryToBase,
+  type QuantityEntryMode,
 } from "@/lib/products/productUnits";
+import { matchesProductSearch, productPickerSubtitle } from "@/lib/products/productNames";
+import { StockQuantityEntry } from "@/components/stock/StockQuantityEntry";
 import type { Brand, Product, Warehouse } from "@/types/master";
 import type { PendingTransfer } from "@/types/stock";
 
@@ -57,9 +58,11 @@ export function StockInForm({
   const [brandId, setBrandId] = useState(transfer?.brand.id ?? "");
   const [productId, setProductId] = useState(transfer?.product.id ?? "");
   const [quantity, setQuantity] = useState(transfer ? String(transfer.quantity) : "");
+  const [quantityMode, setQuantityMode] = useState<QuantityEntryMode>("stockUnit");
   const [clientName, setClientName] = useState("");
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [notes, setNotes] = useState("");
+  const [productSearch, setProductSearch] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -81,23 +84,34 @@ export function StockInForm({
   const selectedWarehouse = warehouseOptions.find((w) => w.id === resolvedWarehouseId);
   const selectedBrand = brands.find((b) => b.id === brandId);
   const selectedProduct = products.find((p) => p.id === productId);
+  const filteredProducts = products.filter(
+    (p) => p.isActive && matchesProductSearch(p, productSearch)
+  );
 
   useEffect(() => {
     setLoadingWarehouses(true);
+    setError("");
     api.warehouses
       .list()
       .then(setWarehouses)
-      .catch(() => setWarehouses([]))
+      .catch((err) => {
+        setWarehouses([]);
+        setError(err instanceof ApiError ? err.message : "Could not load warehouses");
+      })
       .finally(() => setLoadingWarehouses(false));
   }, []);
 
   useEffect(() => {
     if (step === "brand" || step === "product" || step === "confirm") {
       setLoadingBrands(true);
+      setError("");
       api.brands
         .list()
         .then(setBrands)
-        .catch(() => setBrands([]))
+        .catch((err) => {
+          setBrands([]);
+          setError(err instanceof ApiError ? err.message : "Could not load brands");
+        })
         .finally(() => setLoadingBrands(false));
     }
   }, [step]);
@@ -108,10 +122,14 @@ export function StockInForm({
       return;
     }
     setLoadingProducts(true);
+    setError("");
     api.products
       .listAll({ brandId })
       .then(setProducts)
-      .catch(() => setProducts([]))
+      .catch((err) => {
+        setProducts([]);
+        setError(err instanceof ApiError ? err.message : "Could not load products");
+      })
       .finally(() => setLoadingProducts(false));
   }, [brandId]);
 
@@ -125,11 +143,14 @@ export function StockInForm({
   function selectBrand(id: string) {
     setBrandId(id);
     setProductId("");
+    setProductSearch("");
     setStep("product");
   }
 
   function selectProduct(id: string) {
     setProductId(id);
+    setQuantity("");
+    setQuantityMode("stockUnit");
     setStep("confirm");
   }
 
@@ -160,7 +181,7 @@ export function StockInForm({
       const enteredQty = parseInt(quantity, 10);
       const baseQty = transfer
         ? enteredQty
-        : stockUnitsToBase(enteredQty, selectedProduct);
+        : quantityEntryToBase(enteredQty, quantityMode, selectedProduct);
       const result = await api.stock.stockIn({
         ...(whId ? { warehouseId: whId } : {}),
         brandId,
@@ -186,6 +207,7 @@ export function StockInForm({
         setBrandId("");
         setProductId("");
         setQuantity("");
+        setQuantityMode("stockUnit");
         setClientName("");
         setInvoiceNumber("");
         setNotes("");
@@ -239,7 +261,7 @@ export function StockInForm({
         <div className="rounded-2xl border-2 border-orange-200 bg-orange-50 px-5 py-4 text-base text-orange-900">
           <p className="font-bold">Receiving transfer</p>
           <p className="mt-1 text-orange-800">
-            {transfer.quantity} × {transfer.product.name} from{" "}
+            {transfer.quantity} × {productDisplayName(transfer.product)} from{" "}
             {transfer.sourceWarehouse.name} ({transfer.sourceWarehouse.code})
           </p>
         </div>
@@ -283,24 +305,36 @@ export function StockInForm({
       )}
 
       {step === "product" && (
-        <SelectionGrid
-          title="Select product"
-          subtitle={selectedBrand ? `Brand: ${selectedBrand.name}` : undefined}
-          items={products
-            .filter((p) => p.isActive)
-            .map((p) => ({
+        <div className="space-y-4">
+          <input
+            type="search"
+            value={productSearch}
+            onChange={(e) => setProductSearch(e.target.value)}
+            placeholder="Search primary or secondary name…"
+            className="form-input w-full"
+          />
+          <SelectionGrid
+            title="Select product"
+            subtitle={
+              selectedBrand
+                ? `Brand: ${selectedBrand.name} — stock adds to the same product for either name`
+                : undefined
+            }
+            items={filteredProducts.map((p) => ({
               id: p.id,
               title: p.name,
-              subtitle:
-                p.unitsPerStockUnit > 1
-                  ? `1 ${p.stockUnit} = ${p.unitsPerStockUnit} units`
-                  : undefined,
+              subtitle: productPickerSubtitle(p),
             }))}
-          onSelect={selectProduct}
-          onBack={goBack}
-          loading={loadingProducts}
-          emptyMessage="No products for this brand. Add products first."
-        />
+            onSelect={selectProduct}
+            onBack={goBack}
+            loading={loadingProducts}
+            emptyMessage={
+              productSearch.trim()
+                ? "No products match your search"
+                : "No products for this brand. Add products first."
+            }
+          />
+        </div>
       )}
 
       {step === "confirm" && (
@@ -327,6 +361,9 @@ export function StockInForm({
             </h2>
             <p className="mt-1 text-base text-stone-500">
               {selectedProduct?.name}
+              {selectedProduct?.secondaryName?.trim()
+                ? ` · ${selectedProduct.secondaryName}`
+                : ""}
               {selectedBrand ? ` · ${selectedBrand.name}` : ""}
               {selectedWarehouse ? ` · ${selectedWarehouse.name}` : ""}
             </p>
@@ -360,41 +397,15 @@ export function StockInForm({
                 </>
               )}
 
-              <div>
-                <label className="block text-base font-semibold text-stone-700">
-                  {transfer
-                    ? "How many units?"
-                    : stockUnitQuestionLabel(selectedProduct)}
-                </label>
-                {!transfer && formatStockUnitHint(selectedProduct) && (
-                  <p className="mt-1 text-sm text-orange-700">
-                    {formatStockUnitHint(selectedProduct)}
-                  </p>
-                )}
-                <input
-                  type="number"
-                  min={1}
-                  required
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  readOnly={!!transfer}
-                  className="form-input mt-2 text-2xl font-bold"
-                  placeholder="0"
-                />
-                {!transfer &&
-                  quantity &&
-                  formatEnteredQuantityPreview(
-                    parseInt(quantity, 10),
-                    selectedProduct
-                  ) && (
-                    <p className="mt-2 text-sm font-semibold text-stone-600">
-                      {formatEnteredQuantityPreview(
-                        parseInt(quantity, 10),
-                        selectedProduct
-                      )}
-                    </p>
-                  )}
-              </div>
+              <StockQuantityEntry
+                product={selectedProduct}
+                quantity={quantity}
+                onQuantityChange={setQuantity}
+                mode={transfer ? "units" : quantityMode}
+                onModeChange={setQuantityMode}
+                disabled={!!transfer}
+                showToggle={!transfer}
+              />
 
               <div>
                 <label className="block text-base font-semibold text-stone-700">

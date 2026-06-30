@@ -4,6 +4,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { ToastViewport } from "@/components/ui/ToastViewport";
+import { DisableNumberInputScroll } from "@/components/ui/DisableNumberInputScroll";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -39,6 +40,7 @@ export default function RootLayout({
         <AuthProvider>
           <ToastProvider>
             <NotificationProvider>
+              <DisableNumberInputScroll />
               {children}
               <ToastViewport />
             </NotificationProvider>

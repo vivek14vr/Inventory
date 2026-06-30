@@ -2,6 +2,17 @@ import { z } from "zod";
 import { TransferStatus } from "../../shared/constants/roles.js";
 import { paginationQuerySchema } from "../../shared/pagination/pagination.validation.js";
 
+export const TRANSFER_HISTORY_SORT_FIELDS = [
+  "status",
+  "createdAt",
+  "quantity",
+  "productName",
+  "brandName",
+  "route",
+] as const;
+
+export type TransferHistorySortField = (typeof TRANSFER_HISTORY_SORT_FIELDS)[number];
+
 export const transferHistoryQuerySchema = paginationQuerySchema.extend({
   status: z
     .enum([
@@ -15,7 +26,7 @@ export const transferHistoryQuerySchema = paginationQuerySchema.extend({
   destinationWarehouseId: z.string().optional(),
   dateFrom: z.string().optional(),
   dateTo: z.string().optional(),
-  sortBy: z.enum(["createdAt", "quantity", "status"]).optional().default("createdAt"),
+  sortBy: z.enum(TRANSFER_HISTORY_SORT_FIELDS).optional().default("status"),
 });
 
 export type TransferHistoryQuery = z.infer<typeof transferHistoryQuerySchema>;
@@ -24,7 +35,6 @@ export const updateTransferStatusSchema = z.object({
   status: z.enum([
     TransferStatus.RECEIVED,
     TransferStatus.CANCELLED,
-    TransferStatus.RETURNED,
   ]),
   notes: z.string().trim().max(500).optional(),
 });

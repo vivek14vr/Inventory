@@ -70,6 +70,8 @@ export async function reportCurrentStock(query: StockReportQuery) {
         product: p.productName,
         brand: p.brandName,
         totalUnits: p.totalUnits,
+        stockUnit: p.stockUnit,
+        unitsPerStockUnit: p.unitsPerStockUnit,
       })),
     };
   }
@@ -82,6 +84,8 @@ export async function reportCurrentStock(query: StockReportQuery) {
       product: r.productName,
       brand: r.brandName,
       quantity: r.quantity,
+      stockUnit: r.stockUnit,
+      unitsPerStockUnit: r.unitsPerStockUnit,
     })),
   };
 }
@@ -91,7 +95,7 @@ export async function reportStockMovements(query: MovementReportQuery) {
   const movements = await StockMovement.find(filter)
     .sort({ createdAt: -1 })
     .limit(query.limit)
-    .populate("productId", "name")
+    .populate("productId", "name stockUnit unitsPerStockUnit")
     .populate("brandId", "name")
     .populate("warehouseId", "name code")
     .populate("destinationWarehouseId", "name code")
@@ -100,7 +104,11 @@ export async function reportStockMovements(query: MovementReportQuery) {
   return {
     type: query.type ?? "ALL",
     rows: movements.map((m) => {
-      const product = m.productId as unknown as { name: string };
+      const product = m.productId as unknown as {
+        name: string;
+        stockUnit?: string;
+        unitsPerStockUnit?: number;
+      };
       const brand = m.brandId as unknown as { name: string };
       const warehouse = m.warehouseId as unknown as { name: string; code: string };
       const dest = m.destinationWarehouseId as unknown as
@@ -114,6 +122,8 @@ export async function reportStockMovements(query: MovementReportQuery) {
         product: product.name,
         brand: brand.name,
         quantity: m.quantity,
+        stockUnit: product.stockUnit ?? "unit",
+        unitsPerStockUnit: product.unitsPerStockUnit ?? 1,
         dispatchType: m.dispatchType ?? "",
         destination: dest?.code ?? "",
         clientName: m.clientName ?? "",
@@ -145,7 +155,7 @@ export async function reportTransfers(query: TransferReportQuery) {
   const transfers = await Transfer.find(filter)
     .sort({ createdAt: -1 })
     .limit(query.limit)
-    .populate("productId", "name")
+    .populate("productId", "name stockUnit unitsPerStockUnit")
     .populate("brandId", "name")
     .populate("sourceWarehouseId", "name code")
     .populate("destinationWarehouseId", "name code")
@@ -153,7 +163,11 @@ export async function reportTransfers(query: TransferReportQuery) {
 
   return {
     rows: transfers.map((t) => {
-      const product = t.productId as unknown as { name: string };
+      const product = t.productId as unknown as {
+        name: string;
+        stockUnit?: string;
+        unitsPerStockUnit?: number;
+      };
       const brand = t.brandId as unknown as { name: string };
       const source = t.sourceWarehouseId as unknown as { name: string; code: string };
       const dest = t.destinationWarehouseId as unknown as { name: string; code: string };
@@ -164,6 +178,8 @@ export async function reportTransfers(query: TransferReportQuery) {
         product: product.name,
         brand: brand.name,
         quantity: t.quantity,
+        stockUnit: product.stockUnit ?? "unit",
+        unitsPerStockUnit: product.unitsPerStockUnit ?? 1,
         from: source.code,
         to: dest.code,
         receivedAt: t.receivedAt ?? "",
@@ -199,7 +215,7 @@ async function salesMovements(query: ReportFilter) {
   return StockMovement.find(filter)
     .sort({ createdAt: -1 })
     .limit(query.limit ?? 1000)
-    .populate("productId", "name")
+    .populate("productId", "name stockUnit unitsPerStockUnit")
     .populate("brandId", "name")
     .populate("warehouseId", "name code")
     .lean();
@@ -236,7 +252,11 @@ export async function reportSalesByInvoice(query: ReportFilter) {
 
   return {
     rows: movements.map((m) => {
-      const product = m.productId as unknown as { name: string };
+      const product = m.productId as unknown as {
+        name: string;
+        stockUnit?: string;
+        unitsPerStockUnit?: number;
+      };
       const brand = m.brandId as unknown as { name: string };
       const warehouse = m.warehouseId as unknown as { code: string };
 
@@ -248,6 +268,8 @@ export async function reportSalesByInvoice(query: ReportFilter) {
         product: product.name,
         brand: brand.name,
         quantity: m.quantity,
+        stockUnit: product.stockUnit ?? "unit",
+        unitsPerStockUnit: product.unitsPerStockUnit ?? 1,
       };
     }),
   };

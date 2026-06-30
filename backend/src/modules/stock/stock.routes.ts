@@ -16,6 +16,7 @@ router.get(
   "/balances",
   requirePermission(Permission.STOCK_VIEW, {
     warehouseIdFrom: "query",
+    allowScopedWithoutWarehouseId: true,
   }),
   asyncHandler(async (req, res) => {
     const parsed = balancesQuerySchema.safeParse(req.query);
@@ -34,6 +35,7 @@ router.get(
   "/movements",
   requirePermission(Permission.STOCK_VIEW, {
     warehouseIdFrom: "query",
+    allowScopedWithoutWarehouseId: true,
   }),
   asyncHandler(async (req, res) => {
     const limit =

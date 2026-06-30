@@ -1,8 +1,11 @@
 export type InventoryBalance = {
   productId: string;
   productName: string;
+  secondaryProductName?: string;
   brandId: string;
   brandName: string;
+  stockUnit?: string;
+  unitsPerStockUnit?: number;
   quantity: number;
   updatedAt: string;
 };
@@ -16,7 +19,7 @@ export type StockMovement = {
   invoiceNumber?: string;
   notes?: string;
   invoiceLastWorkedAt?: string;
-  product?: { id: string; name: string };
+  product?: { id: string; name: string; secondaryName?: string };
   brand?: { id: string; name: string };
   warehouse?: { id: string; name: string; code: string };
   destinationWarehouse?: { id: string; name: string; code: string };
@@ -28,7 +31,13 @@ export type PendingTransfer = {
   id: string;
   quantity: number;
   status: string;
-  product: { id: string; name: string };
+  product: {
+    id: string;
+    name: string;
+    secondaryName?: string;
+    stockUnit?: string;
+    unitsPerStockUnit?: number;
+  };
   brand: { id: string; name: string };
   sourceWarehouse: { id: string; name: string; code: string };
   destinationWarehouse?: { id: string; name: string; code: string };

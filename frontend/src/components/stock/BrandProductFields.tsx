@@ -26,7 +26,16 @@ export function BrandProductFields({
   const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
-    api.brands.list().then(setBrands).catch(() => setBrands([]));
+    api.brands
+      .list()
+      .then((list) => {
+        setBrands(list);
+        setLoadError("");
+      })
+      .catch((err) => {
+        setBrands([]);
+        setLoadError(err instanceof ApiError ? err.message : "Could not load brands");
+      });
   }, []);
 
   useEffect(() => {

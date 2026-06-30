@@ -36,9 +36,11 @@ export const movementsQuerySchema = paginationQuerySchema.extend({
 });
 
 export const lowStockQuerySchema = paginationQuerySchema.extend({
-  threshold: z.coerce.number().int().min(0).optional().default(10),
   warehouseId: z.string().optional(),
-  sortBy: z.enum(["quantity", "productName", "brandName", "warehouseName"]).optional().default("quantity"),
+  sortBy: z
+    .enum(["quantity", "productName", "brandName", "warehouseName", "lowStockThreshold"])
+    .optional()
+    .default("quantity"),
 });
 
 export type StockFilters = z.infer<typeof stockFiltersSchema>;
@@ -51,7 +53,14 @@ export const adjustStockSchema = z.object({
   productId: z.string().min(1, "Product is required"),
   brandId: z.string().min(1, "Brand is required"),
   quantity: z.coerce.number().int().min(0, "Quantity must be 0 or greater"),
-  reason: z.string().trim().min(3, "Reason must be at least 3 characters").max(500),
+  reason: z
+    .string()
+    .trim()
+    .max(500)
+    .optional()
+    .refine((value) => !value || value.length >= 3, {
+      message: "Reason must be at least 3 characters when provided",
+    }),
 });
 
 export type AdjustStockInput = z.infer<typeof adjustStockSchema>;

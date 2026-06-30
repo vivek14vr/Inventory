@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ButtonSelect } from "@/components/ui/ButtonSelect";
-import { api } from "@/lib/api/client";
+import { api, ApiError } from "@/lib/api/client";
 import type { Warehouse } from "@/types/master";
 
 type WarehouseSelectProps = {
@@ -26,9 +26,21 @@ export function WarehouseSelect({
   disabled,
 }: WarehouseSelectProps) {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
-    api.warehouses.list().then(setWarehouses).catch(() => setWarehouses([]));
+    api.warehouses
+      .list()
+      .then((list) => {
+        setWarehouses(list);
+        setLoadError("");
+      })
+      .catch((err) => {
+        setWarehouses([]);
+        setLoadError(
+          err instanceof ApiError ? err.message : "Could not load warehouses"
+        );
+      });
   }, []);
 
   let options = warehouses;
@@ -45,13 +57,16 @@ export function WarehouseSelect({
   ];
 
   return (
-    <ButtonSelect
-      label={label}
-      value={value}
-      onChange={onChange}
-      options={buttonOptions}
-      disabled={disabled}
-      emptyMessage="No warehouses available"
-    />
+    <div>
+      <ButtonSelect
+        label={label}
+        value={value}
+        onChange={onChange}
+        options={buttonOptions}
+        disabled={disabled}
+        emptyMessage="No warehouses available"
+      />
+      {loadError ? <p className="mt-1 text-xs text-red-600">{loadError}</p> : null}
+    </div>
   );
 }

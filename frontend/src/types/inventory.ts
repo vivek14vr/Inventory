@@ -6,9 +6,13 @@ export type StockRow = {
   warehouseCode: string;
   productId: string;
   productName: string;
+  secondaryProductName?: string;
   brandId: string;
   brandName: string;
   quantity: number;
+  stockUnit?: string;
+  unitsPerStockUnit?: number;
+  lowStockThreshold?: number;
   updatedAt: string;
 };
 
@@ -55,8 +59,11 @@ export type StockProductLocation = {
 export type StockProductRow = {
   productId: string;
   productName: string;
+  secondaryProductName?: string;
   brandId: string;
   brandName: string;
+  stockUnit?: string;
+  unitsPerStockUnit?: number;
   locations: StockProductLocation[];
   totalQuantity: number;
 };
@@ -75,7 +82,6 @@ export type StockResponse = {
 };
 
 export type LowStockResponse = {
-  threshold: number;
   count: number;
   items: StockRow[];
 };
@@ -104,8 +110,11 @@ export type StockItemDetailResponse = {
     warehouseCode: string;
     productId: string;
     productName: string;
+    secondaryProductName?: string;
     brandId: string;
     brandName: string;
+    stockUnit?: string;
+    unitsPerStockUnit?: number;
     quantity: number;
     updatedAt: string | null;
   };
@@ -123,16 +132,19 @@ export type AdminDashboard = {
   warehouseCount: number;
   pendingTransfers: number;
   lowStockCount: number;
-  lowStockThreshold: number;
   lowStockItems: Array<{
     warehouseId: string;
     warehouseName: string;
     warehouseCode: string;
     productId: string;
     productName: string;
+    secondaryProductName?: string;
     brandId: string;
     brandName: string;
+    stockUnit?: string;
+    unitsPerStockUnit?: number;
     quantity: number;
+    lowStockThreshold?: number;
   }>;
   transferActivity: Array<{
     id: string;
