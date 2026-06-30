@@ -52,6 +52,7 @@ function mapTransfer(t: {
     secondaryName?: string;
     stockUnit?: string;
     unitsPerStockUnit?: number;
+    baseUnit?: string;
   };
   const brand = t.brandId as unknown as { _id: Types.ObjectId; name: string };
   const source = t.sourceWarehouseId as unknown as {
@@ -78,6 +79,7 @@ function mapTransfer(t: {
       secondaryName: product.secondaryName,
       stockUnit: product.stockUnit,
       unitsPerStockUnit: product.unitsPerStockUnit,
+      baseUnit: product.baseUnit,
     },
     brand: { id: String(brand._id), name: brand.name },
     sourceWarehouse: {
@@ -111,7 +113,7 @@ async function transferAuditSnapshot(
   session: mongoose.ClientSession | null
 ) {
   const doc = await Transfer.findById(transferId)
-    .populate("productId", "name secondaryName stockUnit unitsPerStockUnit")
+    .populate("productId", "name secondaryName stockUnit unitsPerStockUnit baseUnit")
     .populate("brandId", "name")
     .populate("sourceWarehouseId", "name code")
     .populate("destinationWarehouseId", "name code")
@@ -189,7 +191,7 @@ export async function listPendingTransfers(
 
   const transfers = await Transfer.find(filter)
     .sort({ createdAt: -1 })
-    .populate("productId", "name secondaryName stockUnit unitsPerStockUnit")
+    .populate("productId", "name secondaryName stockUnit unitsPerStockUnit baseUnit")
     .populate("brandId", "name")
     .populate("sourceWarehouseId", "name code")
     .populate("destinationWarehouseId", "name code")
@@ -376,7 +378,7 @@ export async function listTransferHistory(
   const sortOrder = query.sortOrder ?? defaultTransferHistorySortOrder(sortBy);
 
   const populateFields = [
-    { path: "productId", select: "name secondaryName stockUnit unitsPerStockUnit" },
+    { path: "productId", select: "name secondaryName stockUnit unitsPerStockUnit baseUnit" },
     { path: "brandId", select: "name" },
     { path: "sourceWarehouseId", select: "name code" },
     { path: "destinationWarehouseId", select: "name code" },
@@ -561,7 +563,7 @@ export async function updateTransferStatus(
     }
 
     const updated = await Transfer.findById(transferId)
-      .populate("productId", "name secondaryName stockUnit unitsPerStockUnit")
+      .populate("productId", "name secondaryName stockUnit unitsPerStockUnit baseUnit")
       .populate("brandId", "name")
       .populate("sourceWarehouseId", "name code")
       .populate("destinationWarehouseId", "name code")
@@ -709,7 +711,7 @@ export async function returnTransfer(
     );
 
     const updated = await Transfer.findById(transferId)
-      .populate("productId", "name secondaryName stockUnit unitsPerStockUnit")
+      .populate("productId", "name secondaryName stockUnit unitsPerStockUnit baseUnit")
       .populate("brandId", "name")
       .populate("sourceWarehouseId", "name code")
       .populate("destinationWarehouseId", "name code")
@@ -745,7 +747,7 @@ export async function listTransferActivity(query: {
   const transfers = await Transfer.find(filter)
     .sort({ createdAt: -1 })
     .limit(limit)
-    .populate("productId", "name secondaryName stockUnit unitsPerStockUnit")
+    .populate("productId", "name secondaryName stockUnit unitsPerStockUnit baseUnit")
     .populate("brandId", "name")
     .populate("sourceWarehouseId", "name code")
     .populate("destinationWarehouseId", "name code")

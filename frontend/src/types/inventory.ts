@@ -12,6 +12,7 @@ export type StockRow = {
   quantity: number;
   stockUnit?: string;
   unitsPerStockUnit?: number;
+  baseUnit?: string;
   lowStockThreshold?: number;
   updatedAt: string;
 };
@@ -64,6 +65,7 @@ export type StockProductRow = {
   brandName: string;
   stockUnit?: string;
   unitsPerStockUnit?: number;
+  baseUnit?: string;
   locations: StockProductLocation[];
   totalQuantity: number;
 };
@@ -115,6 +117,7 @@ export type StockItemDetailResponse = {
     brandName: string;
     stockUnit?: string;
     unitsPerStockUnit?: number;
+    baseUnit?: string;
     quantity: number;
     updatedAt: string | null;
   };
@@ -143,6 +146,7 @@ export type AdminDashboard = {
     brandName: string;
     stockUnit?: string;
     unitsPerStockUnit?: number;
+    baseUnit?: string;
     quantity: number;
     lowStockThreshold?: number;
   }>;

@@ -24,6 +24,8 @@ import { SelectMenu } from "@/components/ui/SelectMenu";
 import { AUTH_ROUTES } from "@/lib/auth/constants";
 import { formatSecondaryName } from "@/lib/products/productNames";
 import {
+  formatBaseUnits,
+  getBaseUnitLabel,
   pluralizeStockUnit,
   splitBaseQuantity,
   stockUnitsAndLooseToBase,
@@ -91,7 +93,7 @@ export default function AdminInventoryPage() {
   const [sortBy, setSortBy] = useState<string>("updatedAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
-  const { page, setPage, limit, setLimit, resetPage, params } = usePagination(20);
+  const { page, setPage, limit, setLimit, resetPage } = usePagination(20);
 
   useEffect(() => {
     setFilterError("");
@@ -334,11 +336,13 @@ function LastChangeCell({
   updatedAt,
   stockUnit,
   unitsPerStockUnit,
+  baseUnit,
 }: {
   change?: StockLocationLastChange | null;
   updatedAt?: string | null;
   stockUnit?: string;
   unitsPerStockUnit?: number;
+  baseUnit?: string;
 }) {
   const timingLabel = updatedAt
     ? new Date(updatedAt).toLocaleString("en-IN", {
@@ -361,8 +365,9 @@ function LastChangeCell({
     );
   }
 
+  const unitFields = { stockUnit, unitsPerStockUnit, baseUnit };
   const isIn = change.type === "STOCK_IN";
-  const split = splitBaseQuantity(change.quantity, { stockUnit, unitsPerStockUnit });
+  const split = splitBaseQuantity(change.quantity, unitFields);
 
   return (
     <div className="flex flex-col items-start gap-1.5">
@@ -378,7 +383,9 @@ function LastChangeCell({
             : ` ${change.quantity.toLocaleString()}`}
         </span>
         {split.usesStockUnit && split.loose > 0 ? (
-          <span className="text-[10px] font-semibold">{split.loose} loose</span>
+          <span className="text-[10px] font-semibold">
+            + {formatBaseUnits(split.loose, unitFields)}
+          </span>
         ) : null}
       </div>
       {timingLabel ? (
@@ -402,6 +409,7 @@ function toStockRow(product: StockProductRow, loc: StockProductRow["locations"][
     brandName: product.brandName,
     stockUnit: product.stockUnit,
     unitsPerStockUnit: product.unitsPerStockUnit,
+    baseUnit: product.baseUnit,
     quantity: loc.quantity,
     updatedAt: loc.updatedAt,
   };
@@ -521,6 +529,7 @@ function StockView({
                                   quantity={loc.quantity}
                                   stockUnit={product.stockUnit}
                                   unitsPerStockUnit={product.unitsPerStockUnit}
+                                  baseUnit={product.baseUnit}
                                   size="lg"
                                   align="left"
                                 />
@@ -534,6 +543,7 @@ function StockView({
                                 updatedAt={loc?.updatedAt}
                                 stockUnit={product.stockUnit}
                                 unitsPerStockUnit={product.unitsPerStockUnit}
+                          baseUnit={product.baseUnit}
                               />
                             </td>
                           </Fragment>
@@ -544,6 +554,7 @@ function StockView({
                           quantity={product.totalQuantity}
                           stockUnit={product.stockUnit}
                           unitsPerStockUnit={product.unitsPerStockUnit}
+                          baseUnit={product.baseUnit}
                           size="md"
                           align="left"
                           className="text-orange-800 [&_span:first-child]:!text-orange-800"
@@ -688,6 +699,7 @@ function StockView({
                               quantity={loc.quantity}
                               stockUnit={product.stockUnit}
                               unitsPerStockUnit={product.unitsPerStockUnit}
+                          baseUnit={product.baseUnit}
                               size="md"
                               align="right"
                             />
@@ -701,6 +713,7 @@ function StockView({
                             updatedAt={loc?.updatedAt}
                             stockUnit={product.stockUnit}
                             unitsPerStockUnit={product.unitsPerStockUnit}
+                          baseUnit={product.baseUnit}
                           />
                           <div className="flex items-center gap-1.5">
                             <ButtonLink
@@ -780,7 +793,11 @@ function AdjustStockDialog({
   onSaved: () => void;
   onError: (message: string) => void;
 }) {
-  const productUnits = { stockUnit: row.stockUnit, unitsPerStockUnit: row.unitsPerStockUnit };
+  const productUnits = {
+    stockUnit: row.stockUnit,
+    unitsPerStockUnit: row.unitsPerStockUnit,
+    baseUnit: row.baseUnit,
+  };
   const usesUnits = usesStockUnit(productUnits);
   const initialSplit = splitBaseQuantity(row.quantity, productUnits);
 
@@ -791,6 +808,7 @@ function AdjustStockDialog({
   const [saving, setSaving] = useState(false);
 
   const unitLabel = row.stockUnit?.trim() || "unit";
+  const baseLabel = getBaseUnitLabel(productUnits);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -804,7 +822,7 @@ function AdjustStockDialog({
       }
       const per = row.unitsPerStockUnit ?? 1;
       if (looseQty >= per) {
-        onError(`Loose pieces must be less than ${per} (1 ${unitLabel})`);
+        onError(`Loose ${pluralizeStockUnit(baseLabel, 2)} must be less than ${per} (1 ${unitLabel})`);
         return;
       }
       qty = stockUnitsAndLooseToBase(full, looseQty, productUnits);
@@ -868,6 +886,7 @@ function AdjustStockDialog({
             quantity={row.quantity}
             stockUnit={row.stockUnit}
             unitsPerStockUnit={row.unitsPerStockUnit}
+            baseUnit={row.baseUnit}
             size="sm"
             className="mt-1"
           />
@@ -890,7 +909,9 @@ function AdjustStockDialog({
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-zinc-600">Loose pieces</label>
+                <label className="block text-xs font-medium text-zinc-600">
+                  Loose {pluralizeStockUnit(baseLabel, 2)}
+                </label>
                 <input
                   type="number"
                   min={0}
@@ -904,7 +925,9 @@ function AdjustStockDialog({
             </div>
           ) : (
             <div>
-              <label className="block text-xs font-medium text-zinc-600">New quantity (pieces)</label>
+              <label className="block text-xs font-medium text-zinc-600">
+                New quantity ({pluralizeStockUnit(baseLabel, 2)})
+              </label>
               <input
                 type="number"
                 min={0}
@@ -1048,6 +1071,7 @@ function LowStockView({ data }: { data: LowStockResponse }) {
                         quantity={r.lowStockThreshold}
                         stockUnit={r.stockUnit}
                         unitsPerStockUnit={r.unitsPerStockUnit}
+                        baseUnit={r.baseUnit}
                         size="sm"
                         align="right"
                       />

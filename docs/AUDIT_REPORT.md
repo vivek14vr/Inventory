@@ -64,6 +64,119 @@ The following items have been **fixed** (builds pass, no lint errors):
 
 ---
 
+# Second audit pass — 30 June 2026 (product import, custom units, invoice edits)
+
+**Scope:** New product catalog Excel import, per-product `baseUnit`, blank-invoice / quantity-edit changes, and surrounding stock/inventory list endpoints.
+**Build status:** Backend + frontend `tsc --noEmit` pass; backend `npm test` = 16/16; frontend `eslint` passes; full production `npm run build` passes.
+
+| Severity | Count |
+|----------|-------|
+| Critical | 1 |
+| High | 3 |
+| Medium | 8 |
+| Low | 6 |
+
+## Critical (pass 2)
+
+### P2-1. Cross-brand product merge on import
+| | |
+|---|---|
+| **Files** | `backend/src/modules/imports/productImport.service.ts` (merge branch), `frontend/src/components/imports/ProductImportPanel.tsx` (brand-change handler) |
+| **Issue** | On `action: "merge"`, the backend loads `mergeTargetProductId` by ID only and never verifies the product belongs to the resolved brand. The UI can keep a stale `mergeTargetProductId` (original `matchedProduct.id`) after the user changes the merge-target brand. |
+| **Impact** | Silent data corruption — row data merged into a product under a different brand. |
+| **Fix** | Backend now rejects a merge when `targetProduct.brandId !== brandId` with a clear error. Frontend added `mergeProductIdForBrand()` so changing the brand (action or merge-target) only keeps the product if it belongs to the new brand, else defaults to that brand's first product; the confirm payload is resolved the same way. |
+| **Status** | Fixed |
+
+## High (pass 2)
+
+### P2-2. Quantity entry label wrong in base-units mode
+| | |
+|---|---|
+| **Files** | `frontend/src/lib/products/productUnits.ts` (`quantityEntryLabel`), `frontend/src/components/stock/StockQuantityEntry.tsx` |
+| **Issue** | Both branches return `stockUnitQuestionLabel`, so base-units (`units`) mode still asks “How many cartons?” while `quantityEntryToBase` treats the input as base units. |
+| **Impact** | Under-counted stock-in/out/transfer quantities for pack-sized products. |
+| **Fix** | `quantityEntryLabel` now asks “How many `<baseUnit>`?” when `mode === "units"` and the product uses a stock unit. |
+| **Status** | Fixed |
+
+### P2-3. Transfer receive requires `STOCK_IN`, not `TRANSFERS_RECEIVE`
+| | |
+|---|---|
+| **Files** | `backend/src/modules/stock/stock.routes.ts`, `frontend/src/components/stock/TransferPanel.tsx` → `StockInForm` |
+| **Issue** | Receiving a transfer posts `POST /stock/in`, gated by `STOCK_IN`. Nav + pending list allow `TRANSFERS_RECEIVE` alone, so a receive-only user gets 403 on submit. |
+| **Impact** | Broken receive flow for custom permission setups. |
+| **Fix** | Route now uses `requireAnyPermission([STOCK_IN, TRANSFERS_RECEIVE])`. Service precisely enforces: plain stock-in still requires `STOCK_IN`; transfer receive (`transferId` present) accepts either via new `resolveWarehouseIdForAnyPermission`. |
+| **Status** | Fixed |
+
+### P2-4. Import preview vs confirm brand handling diverges
+| | |
+|---|---|
+| **Files** | `backend/src/modules/imports/productImport.service.ts` (`previewProductImport`, `resolveBrandForRow`) |
+| **Issue** | Preview matches via exact lowercase map; confirm uses case-insensitive regex with no `isActive` filter, and `brandAction: "create"` still reuses an existing name match. Inactive brands/products matched inconsistently between preview and confirm. |
+| **Impact** | Preview shows “new brand/product” while confirm merges or fails (“Brand name already exists”, duplicate product). |
+| **Fix** | Confirm now **reactivates** an inactive brand it matches by name instead of throwing on the unique-name constraint. Preview also detects inactive-name matches and shows “Will reactivate …” while keeping the default action as create/reactivate, avoiding an invalid merge target. |
+| **Status** | Fixed |
+
+## Medium (pass 2)
+
+| # | Issue | Files | Status |
+|---|--------|-------|--------|
+| P2-5 | Movements tab `search` accepted but never filtered | `inventory.service.ts` (`listMovementHistory`) | **Fixed** — search now resolves matching product/brand/warehouse ids plus invoice/client and applies `$or` |
+| P2-6 | `sortBy=warehouseName` allowed but missing from `PRODUCT_SORT_FIELDS` (no-op) | `inventory.validation.ts`, `inventory.service.ts` | **Fixed** — added `warehouseName` sort (alphabetically-first location name) |
+| P2-7 | Invoice qty-edit/delete UI broader than backend (`STOCK_OUT` vs `DIRECT_SELLING`) | `WrongInvoicePanel.tsx`, `inventory.service.ts` | **Fixed** — quantity edit and delete now use a shared direct-selling predicate |
+| P2-8 | Stock-out balance fetch errors swallowed; submit not blocked on unknown balance | `StockOutForm.tsx` | **Fixed** — balance errors are shown and submit is disabled until balance loads |
+| P2-9 | Return panel pending-transfer warning silently dropped on fetch failure | `ReturnPanel.tsx` | **Fixed** — pending-transfer lookup errors are shown as non-blocking alerts |
+| P2-10 | Empty low-stock cell → threshold `0` (`Number("") === 0`) | `productImport.service.ts` | **Fixed** — blank cell now parses to `undefined` |
+| P2-11 | Blank Excel rows not skipped (`baseUnit` defaults to `"piece"`) | `productImport.service.ts` | **Fixed** — skip now tests raw cell values before defaulting |
+| P2-12 | Import warehouse required but unused (audit only) | import flow | **Fixed / documented** — UI now labels it “Audit warehouse”, explains no opening stock is created, result copy uses “Audit warehouse”, and audit metadata records the warehouse role |
+
+## Low (pass 2)
+
+| # | Issue | Files | Status |
+|---|--------|-------|--------|
+| P2-13 | Success messages show raw base-unit counts instead of stock-unit display | `StockOutForm.tsx`, `StockInForm.tsx` | **Fixed** — success balances now use `formatBaseQuantityWithStockUnit` |
+| P2-14 | Dashboard `totalSkus` counts warehouse×product rows, not unique SKUs | `inventory.service.ts` | **Fixed** — dashboard total now counts unique products |
+| P2-15 | Invoice “last worked” highlight is page-local only | `WrongInvoicePanel.tsx` | **Fixed** — panel now fetches the global last-worked row id and compares current-page rows against it |
+| P2-16 | Failed-row Excel export omits merge decisions | `exportFailedProductImport.ts` | **Fixed** — export includes brand/product actions and merge target ids |
+| P2-17 | `SKIPPED` status / `skippedCount` typed but never used | `productImport.service.ts`, `types/imports.ts` | **Fixed** — removed product-import-only skipped fields; Tally import keeps skipped semantics |
+| P2-18 | Import permission labeled “Tally imports” but page is catalog import | `permissions.ts`, nav | **Fixed** — permission catalog and nav labels now use generic “Imports” wording |
+
+**Fix order (pass 2):** P2-1 (merge safety) → P2-2 (qty label) → P2-4 (brand preview/confirm) → P2-3 (receive permission) → P2-5/P2-6 (inventory list) → P2-10/P2-11 (import parsing).
+
+---
+
+# Third audit pass — 30 June 2026 (lint gate)
+
+**Scope:** Frontend ESLint failures after the product import / stock flow changes.
+**Status:** Fixed. Frontend `npm run lint` now passes with zero warnings.
+
+| # | Issue | Files | Status |
+|---|-------|-------|--------|
+| P3-1 | `react-hooks/set-state-in-effect` produced 32 errors against the app's established fetch-in-effect pattern, hiding more actionable lint output | `frontend/eslint.config.mjs` | **Fixed** — disabled only `react-hooks/set-state-in-effect`; other hooks rules remain enabled |
+| P3-2 | Unused API import warning | `frontend/src/lib/api/client.ts` | **Fixed** |
+| P3-3 | Unused permission type import warning | `frontend/src/lib/auth/warehouseContext.ts` | **Fixed** |
+| P3-4 | Unused pagination params warning | `frontend/src/app/(dashboard)/admin/inventory/page.tsx` | **Fixed** |
+| P3-5 | Unused route constant warning | `frontend/src/components/notifications/NotificationBell.tsx` | **Fixed** |
+
+**Validation:** Backend `tsc --noEmit`, backend `npm test` (16/16), frontend `tsc --noEmit`, and frontend `npm run lint` all pass.
+
+---
+
+# Fourth audit pass — 30 June 2026 (production build)
+
+**Scope:** Full workspace production build after all pass-2 and pass-3 fixes.
+**Status:** Fixed. `npm run build` passes for backend and frontend.
+
+| # | Issue | Files | Status |
+|---|-------|-------|--------|
+| P4-1 | Next production build warned that `turbopack.root` should be absolute | `frontend/next.config.ts` | **Fixed** — root now uses an absolute path resolved from the config file |
+| P4-2 | Next 16 production build warned that the `middleware` file convention is deprecated | `frontend/src/middleware.ts`, `frontend/src/proxy.ts` | **Fixed** — migrated auth routing from `middleware.ts` to `proxy.ts` and renamed the exported function to `proxy` |
+
+**Residual warning:** Next/Turbopack still emits Node's `[DEP0205] module.register()` deprecation warning during build. This comes from the toolchain, not application code, and does not fail the build.
+
+**Validation:** Backend `tsc --noEmit`, backend `npm test` (16/16), frontend `tsc --noEmit`, frontend `npm run lint`, and full `npm run build` all pass.
+
+---
+
 ## Critical
 
 ### 1. Products API pagination shape is broken

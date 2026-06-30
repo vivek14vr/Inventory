@@ -226,7 +226,7 @@ export async function processTallyImport(
       results.push({
         ...base,
         status: "SUCCESS",
-        message: `Deducted ${row.quantity} pieces`,
+        message: `Deducted ${row.quantity} units`,
       });
       successCount++;
     } catch (err) {

@@ -128,6 +128,7 @@ export default function InventoryItemDetailPage() {
               quantity={item.quantity}
               stockUnit={item.stockUnit}
               unitsPerStockUnit={item.unitsPerStockUnit}
+              baseUnit={item.baseUnit}
               size="lg"
             />
           }
@@ -223,6 +224,7 @@ export default function InventoryItemDetailPage() {
                           quantity={Math.abs(row.change)}
                           stockUnit={item.stockUnit}
                           unitsPerStockUnit={item.unitsPerStockUnit}
+              baseUnit={item.baseUnit}
                           size="sm"
                           align="right"
                           className={
@@ -238,6 +240,7 @@ export default function InventoryItemDetailPage() {
                         quantity={row.balanceAfter}
                         stockUnit={item.stockUnit}
                         unitsPerStockUnit={item.unitsPerStockUnit}
+              baseUnit={item.baseUnit}
                         size="sm"
                         align="right"
                       />

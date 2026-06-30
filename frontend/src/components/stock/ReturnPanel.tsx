@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { api, ApiError } from "@/lib/api/client";
 import { productDisplayName } from "@/lib/products/productDisplayName";
+import { formatBaseQuantityWithStockUnit } from "@/lib/products/productUnits";
 import type { PendingTransfer, TransferRecord } from "@/types/stock";
 
 type ReturnSource = "choose" | "client" | "warehouse-transfer" | "warehouse-manual";
@@ -27,6 +28,7 @@ export function ReturnPanel({
   const [source, setSource] = useState<ReturnSource>("choose");
   const [transfers, setTransfers] = useState<TransferRecord[]>([]);
   const [pendingIncoming, setPendingIncoming] = useState<PendingTransfer[]>([]);
+  const [pendingIncomingError, setPendingIncomingError] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -61,6 +63,7 @@ export function ReturnPanel({
   }, [defaultWarehouseId, allowedWarehouseIds]);
 
   const loadPendingIncoming = useCallback(async () => {
+    setPendingIncomingError("");
     try {
       const items = await api.transfers.pending(defaultWarehouseId || undefined);
       const scoped =
@@ -72,9 +75,13 @@ export function ReturnPanel({
             )
           : items;
       setPendingIncoming(scoped);
-    } catch {
-      // Non-blocking: the warning is best-effort, manual return still works.
+    } catch (err) {
       setPendingIncoming([]);
+      setPendingIncomingError(
+        err instanceof ApiError
+          ? err.message
+          : "Could not check pending incoming transfers"
+      );
     }
   }, [defaultWarehouseId, allowedWarehouseIds]);
 
@@ -96,7 +103,7 @@ export function ReturnPanel({
         notes: returnNotes.trim() || undefined,
       });
       setSuccess(
-        `${transfer.quantity} pieces returned from ${transfer.destinationWarehouse.code} to ${transfer.sourceWarehouse.code}`
+        `${formatBaseQuantityWithStockUnit(transfer.quantity, transfer.product)} returned from ${transfer.destinationWarehouse.code} to ${transfer.sourceWarehouse.code}`
       );
       setReturnNotes("");
       await loadReceivedTransfers();
@@ -109,6 +116,7 @@ export function ReturnPanel({
 
   function goBack() {
     setError("");
+    setPendingIncomingError("");
     setSource("choose");
   }
 
@@ -164,6 +172,12 @@ export function ReturnPanel({
     return (
       <div className="space-y-5">
         <Alert message={success} type="success" />
+        {pendingIncomingError ? (
+          <Alert
+            message={`Could not check pending incoming transfers: ${pendingIncomingError}`}
+            type="error"
+          />
+        ) : null}
         {pendingIncoming.length > 0 && (
           <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-5">
             <p className="text-base font-bold text-amber-900">
@@ -196,6 +210,7 @@ export function ReturnPanel({
                     quantity={t.quantity}
                     stockUnit={t.product.stockUnit}
                     unitsPerStockUnit={t.product.unitsPerStockUnit}
+                    baseUnit={t.product.baseUnit}
                     size="sm"
                   />
                 </li>
@@ -254,6 +269,12 @@ export function ReturnPanel({
       </div>
 
       <Alert message={error} />
+      {pendingIncomingError ? (
+        <Alert
+          message={`Could not check pending incoming transfers: ${pendingIncomingError}`}
+          type="error"
+        />
+      ) : null}
       <Alert message={success} type="success" />
 
       <>
@@ -302,6 +323,7 @@ export function ReturnPanel({
                         quantity={t.quantity}
                         stockUnit={t.product.stockUnit}
                         unitsPerStockUnit={t.product.unitsPerStockUnit}
+                        baseUnit={t.product.baseUnit}
                         size="sm"
                       />
                     </div>

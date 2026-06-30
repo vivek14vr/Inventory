@@ -54,3 +54,32 @@ export function findProductByBrandAndLabel<T extends ProductWithNames>(
   const map = indexProductsByBrandAndLabel(products, getBrandName);
   return map.get(key);
 }
+
+/** Match when any import label equals any existing primary/secondary name for the brand. */
+export function findProductByBrandLabelOverlap<T extends ProductWithNames>(
+  products: T[],
+  brandId: string,
+  primaryName: string,
+  secondaryName: string | undefined,
+  getBrandId: (product: T) => string
+): T | undefined {
+  const importLabels = [primaryName, secondaryName]
+    .map((label) => label?.trim())
+    .filter((label): label is string => Boolean(label))
+    .map((label) => normalizeProductName(label));
+
+  if (importLabels.length === 0) return undefined;
+
+  for (const product of products) {
+    if (getBrandId(product) !== brandId) continue;
+    const existingLabels = [product.name, product.secondaryName]
+      .map((label) => label?.trim())
+      .filter((label): label is string => Boolean(label))
+      .map((label) => normalizeProductName(label));
+    if (importLabels.some((label) => existingLabels.includes(label))) {
+      return product;
+    }
+  }
+
+  return undefined;
+}

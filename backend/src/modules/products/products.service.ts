@@ -23,6 +23,7 @@ type ProductDoc = {
   nameNormalized?: string;
   secondaryName?: string;
   brandId: Types.ObjectId | { _id: Types.ObjectId; name: string; isActive: boolean };
+  baseUnit?: string;
   stockUnit?: string;
   unitsPerStockUnit?: number;
   lowStockThreshold?: number;
@@ -44,6 +45,7 @@ export function toPublicProduct(doc: ProductDoc) {
       name: brand.name,
       isActive: brand.isActive,
     },
+    baseUnit: doc.baseUnit ?? "piece",
     stockUnit: doc.stockUnit ?? "unit",
     unitsPerStockUnit: doc.unitsPerStockUnit ?? 1,
     lowStockThreshold: doc.lowStockThreshold,
@@ -183,6 +185,7 @@ export async function createProduct(input: CreateProductInput) {
       nameNormalized: normalized,
       secondaryName: input.secondaryName?.trim() || undefined,
       brandId: input.brandId,
+      baseUnit: input.baseUnit ?? "piece",
       stockUnit: input.stockUnit ?? "unit",
       unitsPerStockUnit: input.unitsPerStockUnit ?? 1,
       lowStockThreshold: input.lowStockThreshold,
@@ -227,6 +230,10 @@ export async function updateProduct(id: string, input: UpdateProductInput) {
 
   if (input.secondaryName !== undefined) {
     product.secondaryName = input.secondaryName?.trim() || undefined;
+  }
+
+  if (input.baseUnit !== undefined) {
+    product.baseUnit = input.baseUnit;
   }
 
   if (input.stockUnit !== undefined) {

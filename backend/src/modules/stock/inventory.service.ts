@@ -113,7 +113,7 @@ export async function listBalances(warehouseId: string) {
   const balances = await InventoryBalance.find({ warehouseId, quantity: { $gt: 0 } })
     .populate<{ productId: { _id: Types.ObjectId; name: string; secondaryName?: string; stockUnit?: string; unitsPerStockUnit?: number; brandId: Types.ObjectId } }>({
       path: "productId",
-      select: "name secondaryName stockUnit unitsPerStockUnit brandId",
+      select: "name secondaryName stockUnit unitsPerStockUnit baseUnit brandId",
       populate: { path: "brandId", select: "name" },
     })
     .sort({ updatedAt: -1 })
@@ -128,6 +128,7 @@ export async function listBalances(warehouseId: string) {
         secondaryName?: string;
         stockUnit?: string;
         unitsPerStockUnit?: number;
+        baseUnit?: string;
         brandId: { _id: Types.ObjectId; name: string };
       };
       return {
@@ -138,6 +139,7 @@ export async function listBalances(warehouseId: string) {
         brandName: product.brandId.name,
         stockUnit: product.stockUnit ?? "unit",
         unitsPerStockUnit: product.unitsPerStockUnit ?? 1,
+        baseUnit: product.baseUnit ?? "piece",
         quantity: b.quantity,
         updatedAt: b.updatedAt,
       };

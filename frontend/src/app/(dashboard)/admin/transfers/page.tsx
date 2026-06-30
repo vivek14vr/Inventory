@@ -21,6 +21,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { usePagination } from "@/hooks/usePagination";
 import { productDisplayName } from "@/lib/products/productDisplayName";
+import { formatBaseQuantityWithStockUnit } from "@/lib/products/productUnits";
 import type { PaginationMeta } from "@/types/pagination";
 import type { Warehouse } from "@/types/master";
 import type { TransferRecord } from "@/types/stock";
@@ -116,7 +117,7 @@ export default function AdminTransfersPage() {
       if (action === "RETURN_RECEIVED") {
         await api.transfers.returnGoods(transfer.id);
         setSuccess(
-          `${transfer.quantity} pieces returned from ${transfer.destinationWarehouse.name} to ${transfer.sourceWarehouse.name}.`
+          `${formatBaseQuantityWithStockUnit(transfer.quantity, transfer.product)} returned from ${transfer.destinationWarehouse.name} to ${transfer.sourceWarehouse.name}.`
         );
       } else {
         const nextStatus = action === "RECEIVE_PENDING" ? "RECEIVED" : "CANCELLED";
@@ -124,7 +125,7 @@ export default function AdminTransfersPage() {
         setSuccess(
           nextStatus === "RECEIVED"
             ? "Transfer marked as received"
-            : `${transfer.quantity} pieces restored to ${transfer.sourceWarehouse.name}; transfer cancelled.`
+            : `${formatBaseQuantityWithStockUnit(transfer.quantity, transfer.product)} restored to ${transfer.sourceWarehouse.name}; transfer cancelled.`
         );
       }
       setPendingAction(null);
@@ -267,6 +268,7 @@ export default function AdminTransfersPage() {
                         quantity={t.quantity}
                         stockUnit={t.product.stockUnit}
                         unitsPerStockUnit={t.product.unitsPerStockUnit}
+                        baseUnit={t.product.baseUnit}
                         size="sm"
                         align="right"
                       />
@@ -378,10 +380,10 @@ export default function AdminTransfersPage() {
           }
           description={
             pendingAction.action === "RECEIVE_PENDING"
-              ? `${pendingAction.transfer.quantity} pieces of ${productDisplayName(pendingAction.transfer.product)} will be added to ${pendingAction.transfer.destinationWarehouse.name}.`
+              ? `${formatBaseQuantityWithStockUnit(pendingAction.transfer.quantity, pendingAction.transfer.product)} of ${productDisplayName(pendingAction.transfer.product)} will be added to ${pendingAction.transfer.destinationWarehouse.name}.`
               : pendingAction.action === "RETURN_RECEIVED"
-                ? `${pendingAction.transfer.quantity} pieces will be removed from ${pendingAction.transfer.destinationWarehouse.name} and restored to ${pendingAction.transfer.sourceWarehouse.name}.`
-                : `${pendingAction.transfer.quantity} pieces will be restored to ${pendingAction.transfer.sourceWarehouse.name}. The transfer will be cancelled.`
+                ? `${formatBaseQuantityWithStockUnit(pendingAction.transfer.quantity, pendingAction.transfer.product)} will be removed from ${pendingAction.transfer.destinationWarehouse.name} and restored to ${pendingAction.transfer.sourceWarehouse.name}.`
+                : `${formatBaseQuantityWithStockUnit(pendingAction.transfer.quantity, pendingAction.transfer.product)} will be restored to ${pendingAction.transfer.sourceWarehouse.name}. The transfer will be cancelled.`
           }
           confirmLabel={
             pendingAction.action === "RECEIVE_PENDING"

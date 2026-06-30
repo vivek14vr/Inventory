@@ -13,6 +13,7 @@ import type { StockMovement } from "@/types/stock";
 type RowDraft = {
   invoiceNumber: string;
   clientName: string;
+  quantity: string;
 };
 
 type InvoiceSortField =
@@ -27,7 +28,12 @@ function toDraft(m: StockMovement): RowDraft {
   return {
     invoiceNumber: m.invoiceNumber ?? "",
     clientName: m.clientName ?? "",
+    quantity: String(m.quantity),
   };
+}
+
+function isDirectSellingMovement(m: StockMovement): boolean {
+  return m.type === "STOCK_OUT" && m.dispatchType === "DIRECT_SELLING";
 }
 
 export function WrongInvoicePanel() {
@@ -42,6 +48,7 @@ export function WrongInvoicePanel() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [flaggingId, setFlaggingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [lastWorkedId, setLastWorkedId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<InvoiceSortField>("createdAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
@@ -68,10 +75,19 @@ export function WrongInvoicePanel() {
         setItems(result.items);
         setPagination(result.pagination);
         setDrafts(Object.fromEntries(result.items.map((m) => [m.id, toDraft(m)])));
+        const lastWorked = await api.inventory.listInvoices({
+          page: 1,
+          limit: 1,
+          sortBy: "invoiceLastWorkedAt",
+          sortOrder: "desc",
+        });
+        const lastWorkedRow = lastWorked.items[0];
+        setLastWorkedId(lastWorkedRow?.invoiceLastWorkedAt ? lastWorkedRow.id : null);
       } catch (err) {
         setError(err instanceof ApiError ? err.message : "Failed to load invoices");
         setItems([]);
         setPagination(null);
+        setLastWorkedId(null);
       } finally {
         setLoading(false);
       }
@@ -138,9 +154,22 @@ export function WrongInvoicePanel() {
     const nextClient = draft.clientName.trim();
     const currentInvoice = movement.invoiceNumber?.trim() ?? "";
     const currentClient = movement.clientName?.trim() ?? "";
+    const parsedQty = Number.parseInt(draft.quantity, 10);
+    const quantityEditable = isDirectSellingMovement(movement);
+    const nextQuantity = quantityEditable && Number.isFinite(parsedQty) ? parsedQty : movement.quantity;
+    const quantityChanged = quantityEditable && nextQuantity !== movement.quantity;
 
-    if (nextInvoice === currentInvoice && nextClient === currentClient) {
+    if (
+      nextInvoice === currentInvoice &&
+      nextClient === currentClient &&
+      !quantityChanged
+    ) {
       setSuccess("No changes to save");
+      return;
+    }
+
+    if (quantityChanged && (!Number.isFinite(parsedQty) || parsedQty < 1)) {
+      setError("Quantity must be a whole number of at least 1");
       return;
     }
 
@@ -151,6 +180,7 @@ export function WrongInvoicePanel() {
       const updated = await api.inventory.updateMovementInvoice(movement.id, {
         invoiceNumber: nextInvoice,
         clientName: nextClient,
+        ...(quantityChanged ? { quantity: nextQuantity } : {}),
       });
       setSuccess(`Updated ${updated.product?.name ?? "movement"}`);
       // Re-fetch so the current sort order is reapplied to the edited row.
@@ -186,7 +216,7 @@ export function WrongInvoicePanel() {
   }
 
   async function deleteRow(movement: StockMovement) {
-    if (movement.type !== "STOCK_OUT") {
+    if (!isDirectSellingMovement(movement)) {
       setError("Only sale invoices can be deleted");
       return;
     }
@@ -198,7 +228,7 @@ export function WrongInvoicePanel() {
       "this invoice";
     if (
       !window.confirm(
-        `Delete invoice for ${label}? Stock (${movement.quantity} pieces) will be restored to the warehouse.`
+        `Delete invoice for ${label}? Stock (${movement.quantity} units) will be restored to the warehouse.`
       )
     ) {
       return;
@@ -217,8 +247,6 @@ export function WrongInvoicePanel() {
       setDeletingId(null);
     }
   }
-
-  const lastWorkedId = items.find((m) => m.invoiceLastWorkedAt)?.id;
 
   return (
     <div className="space-y-5">
@@ -414,8 +442,22 @@ export function WrongInvoicePanel() {
                           />
                         </td>
                         <td className="px-4 py-3 text-stone-600">{m.warehouse?.code}</td>
-                        <td className="px-4 py-3 text-right font-semibold tabular-nums">
-                          {m.quantity}
+                        <td className="px-4 py-3 text-right">
+                          {isDirectSellingMovement(m) ? (
+                            <input
+                              type="number"
+                              min={1}
+                              step={1}
+                              inputMode="numeric"
+                              value={draft.quantity}
+                              onChange={(e) =>
+                                updateDraft(m.id, { quantity: e.target.value })
+                              }
+                              className="form-input w-full min-w-[72px] text-right tabular-nums"
+                            />
+                          ) : (
+                            <span className="font-semibold tabular-nums">{m.quantity}</span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <input
@@ -424,7 +466,7 @@ export function WrongInvoicePanel() {
                               updateDraft(m.id, { invoiceNumber: e.target.value })
                             }
                             className="form-input w-full min-w-[140px]"
-                            placeholder="No invoice"
+                            placeholder="Blank"
                           />
                         </td>
                         <td className="px-4 py-3 text-right">
@@ -441,7 +483,7 @@ export function WrongInvoicePanel() {
                             >
                               Save
                             </Button>
-                            {m.type === "STOCK_OUT" && (
+                            {isDirectSellingMovement(m) && (
                               <Button
                                 type="button"
                                 size="sm"

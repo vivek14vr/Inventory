@@ -47,7 +47,7 @@ function transferRoute(meta: Record<string, unknown>): string | undefined {
   const fromLabel = from ? `${from}${fromCode ? ` (${fromCode})` : ""}` : undefined;
   const toLabel = to ? `${to}${toCode ? ` (${toCode})` : ""}` : undefined;
   const item = product ? `${product}${brand ? ` · ${brand}` : ""}` : undefined;
-  const qtyLabel = qty ? `${qty} pieces` : undefined;
+  const qtyLabel = qty ? `${qty} units` : undefined;
 
   const parts: string[] = [];
   if (fromLabel && toLabel) parts.push(`${fromLabel} → ${toLabel}`);
@@ -75,7 +75,7 @@ function actorLine(meta: Record<string, unknown>): string | undefined {
 function quantityOnly(meta: Record<string, unknown>, suffix = ""): string | undefined {
   const qty = metaString(meta.quantity);
   if (!qty) return undefined;
-  return suffix ? `${qty} pieces ${suffix}`.trim() : `${qty} pieces`;
+  return suffix ? `${qty} units ${suffix}`.trim() : `${qty} units`;
 }
 
 function formatRemainingMeta(meta: Record<string, unknown>): string {
@@ -171,9 +171,24 @@ export function formatAuditDetails(log: AuditLogEntry): string {
     const product = metaString(meta.productName);
     const prev = metaString(meta.previousInvoiceNumber);
     const next = metaString(meta.invoiceNumber);
+    const prevQty = meta.previousQuantity;
+    const nextQty = meta.quantity;
+    const qtyPart =
+      prevQty !== undefined && nextQty !== undefined
+        ? `qty ${prevQty} → ${nextQty}`
+        : undefined;
+    const invoicePart =
+      prev && next
+        ? `${prev} → ${next}`
+        : next
+          ? `Set to ${next}`
+          : prev
+            ? `Cleared ${prev}`
+            : undefined;
     return [
       product ? `Invoice fix · ${product}` : "Invoice updated",
-      prev && next ? `${prev} → ${next}` : next ? `Set to ${next}` : prev ? `Cleared ${prev}` : undefined,
+      invoicePart,
+      qtyPart,
     ]
       .filter(Boolean)
       .join(" · ");
@@ -190,7 +205,7 @@ export function formatAuditDetails(log: AuditLogEntry): string {
       product ? `Adjusted ${product}` : "Stock adjusted",
       warehouse ? `at ${warehouse}${code ? ` (${code})` : ""}` : undefined,
       prev !== undefined && next !== undefined
-        ? `${prev} → ${next} pieces`
+        ? `${prev} → ${next} units`
         : undefined,
       reason ? `· ${reason}` : undefined,
     ]
@@ -205,7 +220,7 @@ export function formatAuditDetails(log: AuditLogEntry): string {
     return [
       product ? `Deleted sale invoice · ${product}` : "Deleted sale invoice",
       invoice ? `#${invoice}` : undefined,
-      qty ? `${qty} pieces restored` : undefined,
+      qty ? `${qty} units restored` : undefined,
     ]
       .filter(Boolean)
       .join(" · ");

@@ -186,7 +186,7 @@ export default function AdminDashboardPage() {
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
-              label="Total pieces"
+              label="Total quantity"
               value={data.totalInventoryUnits.toLocaleString()}
               icon={icons.units}
             />
@@ -258,7 +258,7 @@ export default function AdminDashboardPage() {
                       </div>
                       <div className="text-right">
                         <p className="font-semibold tabular-nums text-zinc-900">
-                          {w.totalUnits.toLocaleString()} pieces
+                          {w.totalUnits.toLocaleString()} units
                         </p>
                         <p className="text-xs text-zinc-500">{w.skuCount} SKUs</p>
                       </div>

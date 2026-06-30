@@ -1,4 +1,5 @@
 import {
+  formatBaseUnits,
   pluralizeStockUnit,
   splitBaseQuantity,
 } from "@/lib/products/productUnits";
@@ -7,6 +8,7 @@ type StockQuantityDisplayProps = {
   quantity: number;
   stockUnit?: string;
   unitsPerStockUnit?: number;
+  baseUnit?: string;
   size?: "sm" | "md" | "lg";
   align?: "left" | "center" | "right";
   className?: string;
@@ -28,33 +30,35 @@ export function StockQuantityDisplay({
   quantity,
   stockUnit,
   unitsPerStockUnit,
+  baseUnit,
   size = "md",
   align = "left",
   className = "",
 }: StockQuantityDisplayProps) {
-  const split = splitBaseQuantity(quantity, { stockUnit, unitsPerStockUnit });
+  const unitFields = { stockUnit, unitsPerStockUnit, baseUnit };
+  const split = splitBaseQuantity(quantity, unitFields);
   const styles = SIZE[size];
 
   if (!split.usesStockUnit) {
     return (
       <div className={`flex flex-col tabular-nums ${ALIGN[align]} ${className}`}>
         <span className={`${styles.primary} whitespace-nowrap text-stone-900`}>
-          {quantity.toLocaleString()} pieces
+          {formatBaseUnits(quantity, unitFields)}
         </span>
       </div>
     );
   }
 
-  const cartonLabel = pluralizeStockUnit(split.unitLabel, split.fullUnits);
+  const packLabel = pluralizeStockUnit(split.unitLabel, split.fullUnits);
 
   return (
     <div className={`flex flex-col gap-0.5 tabular-nums ${ALIGN[align]} ${className}`}>
       <span className={`${styles.primary} whitespace-nowrap text-stone-900`}>
-        {split.fullUnits.toLocaleString()} {cartonLabel}
+        {split.fullUnits.toLocaleString()} {packLabel}
       </span>
       {split.loose > 0 ? (
         <span className={`${styles.loose} whitespace-nowrap`}>
-          {split.loose.toLocaleString()} loose
+          + {formatBaseUnits(split.loose, unitFields)}
         </span>
       ) : null}
     </div>

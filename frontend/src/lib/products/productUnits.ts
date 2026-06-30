@@ -1,6 +1,11 @@
 import type { Product } from "@/types/master";
 
-export type ProductUnitFields = Pick<Product, "stockUnit" | "unitsPerStockUnit">;
+export type ProductUnitFields = Pick<Product, "stockUnit" | "unitsPerStockUnit" | "baseUnit">;
+
+export function getBaseUnitLabel(product?: Partial<ProductUnitFields> | null): string {
+  const label = product?.baseUnit?.trim();
+  return label || "piece";
+}
 
 export function getUnitsPerStockUnit(
   product?: Partial<ProductUnitFields> | null
@@ -10,7 +15,9 @@ export function getUnitsPerStockUnit(
 }
 
 export function getStockUnitLabel(product?: Partial<ProductUnitFields> | null): string {
-  if (getUnitsPerStockUnit(product) === 1) return "piece";
+  if (!usesStockUnit(product)) {
+    return getBaseUnitLabel(product);
+  }
   const label = product?.stockUnit?.trim();
   return label || "unit";
 }
@@ -36,10 +43,32 @@ export function pluralizeStockUnit(label: string, count: number): string {
   return `${label}s`;
 }
 
+export function formatBaseUnits(
+  qty: number,
+  product?: Partial<ProductUnitFields> | null
+): string {
+  const label = pluralizeStockUnit(getBaseUnitLabel(product), qty);
+  return `${qty.toLocaleString()} ${label}`;
+}
+
+export function formatProductUnitSummary(
+  product?: Partial<ProductUnitFields> | null
+): string {
+  if (!product) return "";
+  if (!usesStockUnit(product)) {
+    return `Per ${getBaseUnitLabel(product)}`;
+  }
+  const per = getUnitsPerStockUnit(product);
+  const base = pluralizeStockUnit(getBaseUnitLabel(product), per);
+  return `${per} ${base} = 1 ${getStockUnitLabel(product)}`;
+}
+
 export function stockUnitQuestionLabel(
   product?: Partial<ProductUnitFields> | null
 ): string {
-  if (!usesStockUnit(product)) return "How many pieces?";
+  if (!usesStockUnit(product)) {
+    return `How many ${pluralizeStockUnit(getBaseUnitLabel(product), 2)}?`;
+  }
   return `How many ${pluralizeStockUnit(getStockUnitLabel(product), 2)}?`;
 }
 
@@ -48,8 +77,9 @@ export function formatStockUnitHint(
 ): string | null {
   if (!usesStockUnit(product)) return null;
   const per = getUnitsPerStockUnit(product);
+  const base = pluralizeStockUnit(getBaseUnitLabel(product), per);
   const label = getStockUnitLabel(product);
-  return `${per} pieces = 1 ${label}`;
+  return `${per} ${base} = 1 ${label}`;
 }
 
 export type QuantityEntryMode = "stockUnit" | "units";
@@ -77,9 +107,9 @@ export function formatUnitsEntryPreview(
   const boxLabel = pluralizeStockUnit(split.unitLabel, split.fullUnits);
   let boxPart = `${split.fullUnits.toLocaleString()} ${boxLabel}`;
   if (split.loose > 0) {
-    boxPart += ` + ${split.loose.toLocaleString()} loose`;
+    boxPart += ` + ${formatBaseUnits(split.loose, product)}`;
   }
-  return `${entered.toLocaleString()} pieces = ${boxPart}`;
+  return `${entered.toLocaleString()} ${pluralizeStockUnit(getBaseUnitLabel(product), entered)} = ${boxPart}`;
 }
 
 export function formatQuantityEntryPreview(
@@ -98,8 +128,8 @@ export function quantityEntryLabel(
   mode: QuantityEntryMode,
   product?: Partial<ProductUnitFields> | null
 ): string {
-  if (mode === "units" || !usesStockUnit(product)) {
-    return "How many pieces?";
+  if (mode === "units" && usesStockUnit(product)) {
+    return `How many ${pluralizeStockUnit(getBaseUnitLabel(product), 2)}?`;
   }
   return stockUnitQuestionLabel(product);
 }
@@ -113,7 +143,8 @@ export function formatEnteredQuantityPreview(
   }
   const base = stockUnitsToBase(entered, product);
   const label = pluralizeStockUnit(getStockUnitLabel(product), entered);
-  return `${entered} ${label} = ${base.toLocaleString()} pieces`;
+  const baseLabel = pluralizeStockUnit(getBaseUnitLabel(product), base);
+  return `${entered} ${label} = ${base.toLocaleString()} ${baseLabel}`;
 }
 
 export function splitBaseQuantity(
@@ -124,15 +155,24 @@ export function splitBaseQuantity(
   loose: number;
   usesStockUnit: boolean;
   unitLabel: string;
+  baseUnitLabel: string;
   perUnit: number;
 } {
   const per = getUnitsPerStockUnit(product);
   const unitLabel = getStockUnitLabel(product);
+  const baseUnitLabel = getBaseUnitLabel(product);
   const uses = usesStockUnit(product);
   const safeQty = Math.max(0, baseQty);
 
   if (!uses) {
-    return { fullUnits: safeQty, loose: 0, usesStockUnit: false, unitLabel, perUnit: 1 };
+    return {
+      fullUnits: safeQty,
+      loose: 0,
+      usesStockUnit: false,
+      unitLabel,
+      baseUnitLabel,
+      perUnit: 1,
+    };
   }
 
   return {
@@ -140,11 +180,12 @@ export function splitBaseQuantity(
     loose: safeQty % per,
     usesStockUnit: true,
     unitLabel,
+    baseUnitLabel,
     perUnit: per,
   };
 }
 
-/** Convert full stock units + loose pieces to base inventory quantity. */
+/** Convert full stock units + loose base units to base inventory quantity. */
 export function stockUnitsAndLooseToBase(
   fullUnits: number,
   loose: number,
@@ -160,12 +201,12 @@ export function formatBaseQuantityWithStockUnit(
 ): string {
   const split = splitBaseQuantity(baseQty, product);
   if (!split.usesStockUnit) {
-    return `${baseQty.toLocaleString()} pieces`;
+    return formatBaseUnits(baseQty, product);
   }
-  const cartonLabel = pluralizeStockUnit(split.unitLabel, split.fullUnits);
-  const cartonPart = `${split.fullUnits.toLocaleString()} ${cartonLabel}`;
+  const packLabel = pluralizeStockUnit(split.unitLabel, split.fullUnits);
+  const packPart = `${split.fullUnits.toLocaleString()} ${packLabel}`;
   if (split.loose > 0) {
-    return `${cartonPart} + ${split.loose.toLocaleString()} loose`;
+    return `${packPart} + ${formatBaseUnits(split.loose, product)}`;
   }
-  return cartonPart;
+  return packPart;
 }

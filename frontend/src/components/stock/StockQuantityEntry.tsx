@@ -4,8 +4,10 @@ import type { Product } from "@/types/master";
 import {
   formatQuantityEntryPreview,
   formatStockUnitHint,
+  getBaseUnitLabel,
   getStockUnitLabel,
   pluralizeStockUnit,
+  quantityEntryLabel,
   type QuantityEntryMode,
   usesStockUnit,
 } from "@/lib/products/productUnits";
@@ -33,6 +35,7 @@ export function StockQuantityEntry({
   const entered = parseInt(quantity, 10);
   const preview = formatQuantityEntryPreview(entered, mode, product);
   const stockUnitLabel = pluralizeStockUnit(getStockUnitLabel(product), 2);
+  const baseUnitLabel = pluralizeStockUnit(getBaseUnitLabel(product), 2);
 
   function switchMode(next: QuantityEntryMode) {
     if (next === mode) return;
@@ -44,11 +47,7 @@ export function StockQuantityEntry({
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <label className="block text-base font-semibold text-stone-700">
-          {canToggle
-            ? mode === "stockUnit"
-              ? `How many ${stockUnitLabel}?`
-              : "How many pieces?"
-            : "How many pieces?"}
+          {quantityEntryLabel(mode, product)}
         </label>
         {canToggle ? (
           <div
@@ -78,7 +77,7 @@ export function StockQuantityEntry({
                   : "text-stone-600 hover:bg-white"
               }`}
             >
-              Pieces
+              {baseUnitLabel}
             </button>
           </div>
         ) : null}

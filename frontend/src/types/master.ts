@@ -21,9 +21,11 @@ export type Product = {
   secondaryName?: string;
   brandId: string;
   brand: { id: string; name: string; isActive: boolean };
-  /** Stocking unit label, e.g. Carton, Box. */
+  /** Smallest inventory unit, e.g. piece, kg. */
+  baseUnit: string;
+  /** Pack/stock unit label, e.g. Carton, Box. */
   stockUnit: string;
-  /** Base units (pieces) per one stock unit. */
+  /** Base units per one stock unit. */
   unitsPerStockUnit: number;
   /** Alert when stock falls to this level or below. */
   lowStockThreshold?: number;

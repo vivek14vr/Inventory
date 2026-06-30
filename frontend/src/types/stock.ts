@@ -6,6 +6,7 @@ export type InventoryBalance = {
   brandName: string;
   stockUnit?: string;
   unitsPerStockUnit?: number;
+  baseUnit?: string;
   quantity: number;
   updatedAt: string;
 };
@@ -37,6 +38,7 @@ export type PendingTransfer = {
     secondaryName?: string;
     stockUnit?: string;
     unitsPerStockUnit?: number;
+    baseUnit?: string;
   };
   brand: { id: string; name: string };
   sourceWarehouse: { id: string; name: string; code: string };

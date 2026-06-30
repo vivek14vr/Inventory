@@ -20,7 +20,7 @@ const navGroups = [
     title: "More",
     items: [
       { href: AUTH_ROUTES.adminTransfers, label: "Transfer History" },
-      { href: AUTH_ROUTES.adminImports, label: "Import Sales" },
+      { href: AUTH_ROUTES.adminImports, label: "Imports" },
       { href: AUTH_ROUTES.adminProducts, label: "Products" },
       { href: AUTH_ROUTES.adminWarehouses, label: "Warehouses" },
       { href: AUTH_ROUTES.adminBrands, label: "Brands" },

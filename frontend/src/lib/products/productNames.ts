@@ -1,17 +1,21 @@
 import type { Product } from "@/types/master";
+import { formatProductUnitSummary } from "@/lib/products/productUnits";
 
 export function formatSecondaryName(value?: string | null): string {
   const text = value?.trim();
   return text || "—";
 }
 
-export function productPickerSubtitle(product: Pick<Product, "secondaryName" | "stockUnit" | "unitsPerStockUnit">): string | undefined {
+export function productPickerSubtitle(
+  product: Pick<Product, "secondaryName" | "stockUnit" | "unitsPerStockUnit" | "baseUnit">
+): string | undefined {
   const parts: string[] = [];
   if (product.secondaryName?.trim()) {
     parts.push(product.secondaryName.trim());
   }
-  if (product.unitsPerStockUnit > 1) {
-    parts.push(`${product.unitsPerStockUnit} pieces = 1 ${product.stockUnit}`);
+  const unitSummary = formatProductUnitSummary(product);
+  if (unitSummary) {
+    parts.push(unitSummary);
   }
   return parts.length > 0 ? parts.join(" · ") : undefined;
 }

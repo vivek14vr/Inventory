@@ -8,7 +8,7 @@ import { StockQuantityDisplay } from "@/components/inventory/StockQuantityDispla
 import type { Brand, Product, Warehouse } from "@/types/master";
 import type { ReportFilters, ReportResult, ReportType } from "@/types/reports";
 
-const META_COLUMNS = new Set(["stockUnit", "unitsPerStockUnit"]);
+const META_COLUMNS = new Set(["stockUnit", "unitsPerStockUnit", "baseUnit"]);
 const QUANTITY_COLUMNS = new Set(["quantity", "totalUnits", "totalQuantity"]);
 
 const REPORT_OPTIONS: { value: ReportType; label: string }[] = [
@@ -386,6 +386,9 @@ export default function AdminReportsPage() {
                                     : undefined
                                 }
                                 unitsPerStockUnit={unitsPer}
+                                baseUnit={
+                                  typeof row.baseUnit === "string" ? row.baseUnit : undefined
+                                }
                                 size="sm"
                                 align="right"
                               />

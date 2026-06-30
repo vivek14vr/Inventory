@@ -10,12 +10,14 @@ import { usePagination } from "@/hooks/usePagination";
 import type { PaginationMeta } from "@/types/pagination";
 import type { Brand, Product } from "@/types/master";
 import { formatSecondaryName } from "@/lib/products/productNames";
+import { formatProductUnitSummary } from "@/lib/products/productUnits";
 
 const emptyForm = {
   name: "",
   secondaryName: "",
   brandId: "",
-  stockUnit: "unit",
+  baseUnit: "piece",
+  stockUnit: "",
   unitsPerStockUnit: "1",
   lowStockThreshold: "",
   editId: null as string | null,
@@ -69,29 +71,31 @@ export default function AdminProductsPage() {
     setError("");
     setSuccess("");
     try {
+      const per = parseInt(form.unitsPerStockUnit, 10) || 1;
+      const baseUnit = form.baseUnit.trim() || "piece";
+      const stockUnit = per > 1 ? form.stockUnit.trim() || "unit" : baseUnit;
+      const payload = {
+        name: form.name,
+        secondaryName: form.secondaryName.trim() || undefined,
+        brandId: form.brandId,
+        baseUnit,
+        stockUnit,
+        unitsPerStockUnit: per,
+        lowStockThreshold: form.lowStockThreshold.trim()
+          ? parseInt(form.lowStockThreshold, 10)
+          : undefined,
+      };
       if (form.editId) {
         await api.products.update(form.editId, {
-          name: form.name,
+          ...payload,
           secondaryName: form.secondaryName.trim() || null,
-          brandId: form.brandId,
-          stockUnit: form.stockUnit.trim() || "unit",
-          unitsPerStockUnit: parseInt(form.unitsPerStockUnit, 10) || 1,
           lowStockThreshold: form.lowStockThreshold.trim()
             ? parseInt(form.lowStockThreshold, 10)
             : null,
         });
         setSuccess("Product updated");
       } else {
-        await api.products.create({
-          name: form.name,
-          secondaryName: form.secondaryName.trim() || undefined,
-          brandId: form.brandId,
-          stockUnit: form.stockUnit.trim() || "unit",
-          unitsPerStockUnit: parseInt(form.unitsPerStockUnit, 10) || 1,
-          ...(form.lowStockThreshold.trim()
-            ? { lowStockThreshold: parseInt(form.lowStockThreshold, 10) }
-            : {}),
-        });
+        await api.products.create(payload);
         setSuccess("Product created");
       }
       setForm(emptyForm);
@@ -202,22 +206,37 @@ export default function AdminProductsPage() {
             />
             <div>
               <label className="block text-sm font-medium text-zinc-700">
-                Stock unit name
+                Base unit
               </label>
               <input
                 required
-                value={form.stockUnit}
-                onChange={(e) => setForm({ ...form, stockUnit: e.target.value })}
+                value={form.baseUnit}
+                onChange={(e) => setForm({ ...form, baseUnit: e.target.value })}
                 className="form-input mt-1"
-                placeholder="e.g. Carton, Box, Piece"
+                placeholder="e.g. piece, kg, liter"
               />
               <p className="mt-1 text-xs text-zinc-500">
-                What you count when stocking in or out (carton, box, etc.)
+                Smallest unit you count in inventory (piece, kg, etc.)
               </p>
             </div>
             <div>
               <label className="block text-sm font-medium text-zinc-700">
-                Pieces per stock unit
+                Pack unit name
+              </label>
+              <input
+                value={form.stockUnit}
+                onChange={(e) => setForm({ ...form, stockUnit: e.target.value })}
+                className="form-input mt-1"
+                placeholder="e.g. Carton, Box (only if packs &gt; 1)"
+                disabled={parseInt(form.unitsPerStockUnit, 10) <= 1}
+              />
+              <p className="mt-1 text-xs text-zinc-500">
+                Outer pack label when you stock in cartons or boxes
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-zinc-700">
+                Base units per pack
               </label>
               <input
                 type="number"
@@ -228,10 +247,11 @@ export default function AdminProductsPage() {
                   setForm({ ...form, unitsPerStockUnit: e.target.value })
                 }
                 className="form-input mt-1"
-                placeholder="30"
+                placeholder="1"
               />
               <p className="mt-1 text-xs text-zinc-500">
-                e.g. 30 means 1 carton = 30 individual pieces in inventory
+                e.g. 30 means 1 carton = 30 kg in inventory. Use 1 when you only count
+                the base unit.
               </p>
             </div>
             <div>
@@ -273,7 +293,7 @@ export default function AdminProductsPage() {
               <th className="px-4 py-3">Primary name</th>
               <th className="px-4 py-3">Secondary name</th>
               <th className="px-4 py-3">Brand</th>
-              <th className="px-4 py-3">Stock unit</th>
+              <th className="px-4 py-3">Units</th>
               <th className="px-4 py-3">Low stock at</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3"></th>
@@ -299,9 +319,7 @@ export default function AdminProductsPage() {
                   <td className="px-4 py-3 text-zinc-600">{formatSecondaryName(p.secondaryName)}</td>
                   <td className="px-4 py-3 text-zinc-600">{p.brand.name}</td>
                   <td className="px-4 py-3 text-zinc-600">
-                    {p.unitsPerStockUnit > 1
-                      ? `${p.unitsPerStockUnit} pieces = 1 ${p.stockUnit}`
-                      : "Per piece"}
+                    {formatProductUnitSummary(p)}
                   </td>
                   <td className="px-4 py-3 text-zinc-600">
                     {p.lowStockThreshold != null ? `≤ ${p.lowStockThreshold}` : "—"}
@@ -316,7 +334,8 @@ export default function AdminProductsPage() {
                           name: p.name,
                           secondaryName: p.secondaryName ?? "",
                           brandId: p.brandId,
-                          stockUnit: p.stockUnit,
+                          baseUnit: p.baseUnit ?? "piece",
+                          stockUnit: p.unitsPerStockUnit > 1 ? p.stockUnit : "",
                           unitsPerStockUnit: String(p.unitsPerStockUnit),
                           lowStockThreshold:
                             p.lowStockThreshold != null ? String(p.lowStockThreshold) : "",

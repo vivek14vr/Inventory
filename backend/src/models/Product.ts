@@ -6,9 +6,11 @@ export interface IProduct extends Document {
   nameNormalized: string;
   secondaryName?: string;
   brandId: Types.ObjectId;
-  /** Label for the stocking unit, e.g. Carton, Box. */
+  /** Smallest inventory unit label, e.g. piece, kg. */
+  baseUnit: string;
+  /** Label for the stocking/pack unit, e.g. Carton, Box. */
   stockUnit: string;
-  /** How many base units (pieces) are in one stock unit. */
+  /** How many base units are in one stock unit. */
   unitsPerStockUnit: number;
   /** When set, stock at or below this level appears in low-stock alerts. */
   lowStockThreshold?: number;
@@ -23,6 +25,7 @@ const productSchema = new Schema<IProduct>(
     nameNormalized: { type: String, trim: true, lowercase: true },
     secondaryName: { type: String, trim: true },
     brandId: { type: Schema.Types.ObjectId, ref: "Brand", required: true },
+    baseUnit: { type: String, trim: true, default: "piece" },
     stockUnit: { type: String, trim: true, default: "unit" },
     unitsPerStockUnit: { type: Number, min: 1, default: 1 },
     lowStockThreshold: { type: Number, min: 0 },

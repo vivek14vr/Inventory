@@ -1,5 +1,7 @@
 import { Types } from "mongoose";
+import type { ClientSession } from "mongoose";
 import { AuditLog } from "../../models/AuditLog.js";
+import { Brand } from "../../models/Brand.js";
 import { InventoryBalance } from "../../models/InventoryBalance.js";
 import { Product } from "../../models/Product.js";
 import { StockMovement } from "../../models/StockMovement.js";
@@ -46,6 +48,7 @@ export type StockRow = {
   quantity: number;
   stockUnit: string;
   unitsPerStockUnit: number;
+  baseUnit: string;
   lowStockThreshold?: number;
   updatedAt: Date;
 };
@@ -67,7 +70,7 @@ async function fetchStockRows(query: StockFilters): Promise<StockRow[]> {
     )
     .populate<{ productId: { _id: Types.ObjectId; name: string; secondaryName?: string; lowStockThreshold?: number; stockUnit?: string; unitsPerStockUnit?: number; brandId: Types.ObjectId } }>({
       path: "productId",
-      select: "name secondaryName lowStockThreshold stockUnit unitsPerStockUnit brandId",
+      select: "name secondaryName lowStockThreshold stockUnit unitsPerStockUnit baseUnit brandId",
       populate: { path: "brandId", select: "name" },
     })
     .sort({ updatedAt: -1 })
@@ -86,6 +89,7 @@ async function fetchStockRows(query: StockFilters): Promise<StockRow[]> {
       lowStockThreshold?: number;
       stockUnit?: string;
       unitsPerStockUnit?: number;
+      baseUnit?: string;
       brandId: { _id: Types.ObjectId; name: string };
     };
     const warehouse = b.warehouseId as unknown as {
@@ -106,6 +110,7 @@ async function fetchStockRows(query: StockFilters): Promise<StockRow[]> {
       quantity: b.quantity,
       stockUnit: product.stockUnit ?? "unit",
       unitsPerStockUnit: product.unitsPerStockUnit ?? 1,
+      baseUnit: product.baseUnit ?? "piece",
       lowStockThreshold: product.lowStockThreshold,
       updatedAt: b.updatedAt,
     });
@@ -145,6 +150,7 @@ export type StockProductRow = {
   brandName: string;
   stockUnit: string;
   unitsPerStockUnit: number;
+  baseUnit: string;
   locations: StockProductLocation[];
   totalQuantity: number;
 };
@@ -164,6 +170,7 @@ function groupStockByProduct(rows: StockRow[]): StockProductRow[] {
         brandName: r.brandName,
         stockUnit: r.stockUnit,
         unitsPerStockUnit: r.unitsPerStockUnit,
+        baseUnit: r.baseUnit,
         locations: [],
         totalQuantity: 0,
       });
@@ -233,6 +240,10 @@ const PRODUCT_SORT_FIELDS = {
   quantity: (p: StockProductRow) => p.totalQuantity,
   productName: (p: StockProductRow) => p.productName,
   brandName: (p: StockProductRow) => p.brandName,
+  warehouseName: (p: StockProductRow) =>
+    p.locations
+      .map((l) => l.warehouseName)
+      .sort((a, b) => a.localeCompare(b))[0] ?? "",
   updatedAt: (p: StockProductRow) =>
     Math.max(...p.locations.map((l) => l.updatedAt.getTime()), 0),
 } as const;
@@ -264,6 +275,7 @@ export async function listCurrentStock(query: StockQuery) {
       brandName: string;
       stockUnit: string;
       unitsPerStockUnit: number;
+      baseUnit: string;
       totalUnits: number;
     }
   >();
@@ -302,6 +314,7 @@ export async function listCurrentStock(query: StockQuery) {
       brandName: r.brandName,
       stockUnit: r.stockUnit,
       unitsPerStockUnit: r.unitsPerStockUnit,
+      baseUnit: r.baseUnit,
       totalUnits: r.quantity,
     });
   }
@@ -334,6 +347,7 @@ export async function listCurrentStock(query: StockQuery) {
       brandName: p.brandName,
       stockUnit: p.stockUnit,
       unitsPerStockUnit: p.unitsPerStockUnit,
+      baseUnit: p.baseUnit,
       quantity: loc.quantity,
       updatedAt: loc.updatedAt,
     }))
@@ -592,6 +606,7 @@ export async function getStockItemDetail(query: StockItemDetailQuery) {
       brandName: brand.name,
       stockUnit: product.stockUnit ?? "unit",
       unitsPerStockUnit: product.unitsPerStockUnit ?? 1,
+      baseUnit: product.baseUnit ?? "piece",
       quantity: currentQuantity,
       updatedAt: balance?.updatedAt ?? null,
     },
@@ -628,6 +643,24 @@ export async function listMovementHistory(query: MovementsQuery) {
     if (query.dateTo) {
       (filter.createdAt as Record<string, Date>).$lte = new Date(query.dateTo);
     }
+  }
+
+  const search = query.search?.trim();
+  if (search) {
+    const regex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+    const [productIds, brandIds, warehouseIds] = await Promise.all([
+      Product.find({ $or: [{ name: regex }, { secondaryName: regex }] }).distinct("_id"),
+      Brand.find({ name: regex }).distinct("_id"),
+      Warehouse.find({ $or: [{ name: regex }, { code: regex }] }).distinct("_id"),
+    ]);
+    filter.$or = [
+      { productId: { $in: productIds } },
+      { brandId: { $in: brandIds } },
+      { warehouseId: { $in: warehouseIds } },
+      { destinationWarehouseId: { $in: warehouseIds } },
+      { invoiceNumber: regex },
+      { clientName: regex },
+    ];
   }
 
   const { page, limit, skip, sortOrder } = getPaginationParams(query);
@@ -807,6 +840,7 @@ export async function getAdminDashboard() {
       lowStockThreshold: row.lowStockThreshold,
       stockUnit: row.stockUnit,
       unitsPerStockUnit: row.unitsPerStockUnit,
+      baseUnit: row.baseUnit,
     })),
     transferActivity,
     warehouseSummaries: stockSummary.byWarehouse,
@@ -820,10 +854,12 @@ function buildStockSummary(rows: StockRow[]) {
     string,
     { warehouseId: string; name: string; code: string; totalUnits: number; skuCount: number }
   >();
+  const uniqueProducts = new Set<string>();
   let totalUnits = 0;
 
   for (const r of rows) {
     totalUnits += r.quantity;
+    uniqueProducts.add(r.productId);
     const wh = byWarehouse.get(r.warehouseId) ?? {
       warehouseId: r.warehouseId,
       name: r.warehouseName,
@@ -838,7 +874,7 @@ function buildStockSummary(rows: StockRow[]) {
 
   return {
     totalUnits,
-    totalSkus: rows.length,
+    totalSkus: uniqueProducts.size,
     byWarehouse: Array.from(byWarehouse.values()).sort((a, b) =>
       a.name.localeCompare(b.name)
     ),
@@ -992,86 +1028,134 @@ export async function updateMovementInvoice(
     throw new BadRequestError("Invalid movement id");
   }
 
-  const movement = await StockMovement.findById(movementId);
-  if (!movement) {
-    throw new NotFoundError("Stock movement not found");
-  }
+  const applyUpdate = async (session: ClientSession | null = null) => {
+    const movement = await StockMovement.findById(movementId).session(session ?? null);
+    if (!movement) {
+      throw new NotFoundError("Stock movement not found");
+    }
 
-  const previousInvoice = movement.invoiceNumber?.trim() || "";
-  const previousClient = movement.clientName?.trim() || "";
-  const nextInvoice =
-    input.invoiceNumber !== undefined ? input.invoiceNumber.trim() : previousInvoice;
-  const nextClient =
-    input.clientName !== undefined ? input.clientName.trim() : previousClient;
+    const previousInvoice = movement.invoiceNumber?.trim() || "";
+    const previousClient = movement.clientName?.trim() || "";
+    const previousQuantity = movement.quantity;
+    const nextInvoice =
+      input.invoiceNumber !== undefined ? input.invoiceNumber.trim() : previousInvoice;
+    const nextClient =
+      input.clientName !== undefined ? input.clientName.trim() : previousClient;
+    const nextQuantity =
+      input.quantity !== undefined ? input.quantity : previousQuantity;
 
-  const invoiceChanged = nextInvoice !== previousInvoice;
-  const clientChanged = nextClient !== previousClient;
-  const togglingWorked = input.markLastWorked !== undefined;
-  const markingWorked = input.markLastWorked === true;
-  const unmarkingWorked = input.markLastWorked === false;
+    const invoiceChanged = nextInvoice !== previousInvoice;
+    const clientChanged = nextClient !== previousClient;
+    const quantityChanged = nextQuantity !== previousQuantity;
+    const togglingWorked = input.markLastWorked !== undefined;
+    const markingWorked = input.markLastWorked === true;
+    const unmarkingWorked = input.markLastWorked === false;
 
-  if (!invoiceChanged && !clientChanged && !togglingWorked) {
-    const unchanged = await StockMovement.findById(movementId)
+    if (!invoiceChanged && !clientChanged && !quantityChanged && !togglingWorked) {
+      const unchanged = await StockMovement.findById(movementId)
+        .populate("productId", "name secondaryName")
+        .populate("brandId", "name")
+        .populate("warehouseId", "name code")
+        .populate("destinationWarehouseId", "name code")
+        .session(session ?? null)
+        .lean();
+      return mapMovementRow(unchanged as MovementDoc);
+    }
+
+    if (quantityChanged) {
+      if (
+        movement.type !== StockMovementType.STOCK_OUT ||
+        movement.dispatchType !== DispatchType.DIRECT_SELLING
+      ) {
+        throw new BadRequestError("Quantity can only be updated on client sale invoices");
+      }
+      const delta = previousQuantity - nextQuantity;
+      if (delta < 0) {
+        await balanceService.assertSufficientStock(
+          String(movement.warehouseId),
+          String(movement.productId),
+          Math.abs(delta),
+          session
+        );
+      }
+      if (delta !== 0) {
+        await balanceService.adjustBalance(
+          String(movement.warehouseId),
+          String(movement.productId),
+          delta,
+          session
+        );
+      }
+      movement.quantity = nextQuantity;
+    }
+
+    if (invoiceChanged) {
+      movement.invoiceNumber = nextInvoice || undefined;
+    }
+    if (clientChanged) {
+      movement.clientName = nextClient || undefined;
+    }
+    if (markingWorked) {
+      await StockMovement.updateMany(
+        { invoiceLastWorkedAt: { $exists: true } },
+        { $unset: { invoiceLastWorkedAt: 1 } }
+      ).session(session ?? null);
+      movement.invoiceLastWorkedAt = new Date();
+    } else if (unmarkingWorked) {
+      movement.invoiceLastWorkedAt = undefined;
+    }
+
+    await movement.save({ session });
+
+    const refreshed = await StockMovement.findById(movementId)
       .populate("productId", "name secondaryName")
       .populate("brandId", "name")
       .populate("warehouseId", "name code")
       .populate("destinationWarehouseId", "name code")
+      .session(session ?? null)
       .lean();
-    return mapMovementRow(unchanged as MovementDoc);
+
+    const row = mapMovementRow(refreshed as MovementDoc);
+
+    if (invoiceChanged || clientChanged || quantityChanged) {
+      await AuditLog.create(
+        [
+          {
+            action: "INVOICE_UPDATED",
+            entity: "StockMovement",
+            entityId: movement._id,
+            userId: user.id,
+            metadata: {
+              movementId: String(movement._id),
+              movementType: movement.type,
+              productId: row.product?.id,
+              productName: row.product?.name,
+              brandId: row.brand?.id,
+              brandName: row.brand?.name,
+              warehouseId: row.warehouse?.id,
+              warehouseName: row.warehouse?.name,
+              warehouseCode: row.warehouse?.code,
+              previousClientName: previousClient || undefined,
+              clientName: nextClient || undefined,
+              previousInvoiceNumber: previousInvoice || undefined,
+              invoiceNumber: nextInvoice || undefined,
+              previousQuantity: quantityChanged ? previousQuantity : undefined,
+              quantity: quantityChanged ? nextQuantity : undefined,
+            },
+          },
+        ],
+        { session }
+      );
+    }
+
+    return row;
+  };
+
+  if (input.quantity !== undefined) {
+    return runInTransaction(applyUpdate);
   }
 
-  if (invoiceChanged) {
-    movement.invoiceNumber = nextInvoice || undefined;
-  }
-  if (clientChanged) {
-    movement.clientName = nextClient || undefined;
-  }
-  if (markingWorked) {
-    await StockMovement.updateMany(
-      { invoiceLastWorkedAt: { $exists: true } },
-      { $unset: { invoiceLastWorkedAt: 1 } }
-    );
-    movement.invoiceLastWorkedAt = new Date();
-  } else if (unmarkingWorked) {
-    movement.invoiceLastWorkedAt = undefined;
-  }
-
-  await movement.save();
-
-  const refreshed = await StockMovement.findById(movementId)
-    .populate("productId", "name secondaryName")
-    .populate("brandId", "name")
-    .populate("warehouseId", "name code")
-    .populate("destinationWarehouseId", "name code")
-    .lean();
-
-  const row = mapMovementRow(refreshed as MovementDoc);
-
-  if (invoiceChanged || clientChanged) {
-    await AuditLog.create({
-      action: "INVOICE_UPDATED",
-      entity: "StockMovement",
-      entityId: movement._id,
-      userId: user.id,
-      metadata: {
-        movementId: String(movement._id),
-        movementType: movement.type,
-        productId: row.product?.id,
-        productName: row.product?.name,
-        brandId: row.brand?.id,
-        brandName: row.brand?.name,
-        warehouseId: row.warehouse?.id,
-        warehouseName: row.warehouse?.name,
-        warehouseCode: row.warehouse?.code,
-        previousClientName: previousClient || undefined,
-        clientName: nextClient || undefined,
-        previousInvoiceNumber: previousInvoice || undefined,
-        invoiceNumber: nextInvoice || undefined,
-      },
-    });
-  }
-
-  return row;
+  return applyUpdate(null);
 }
 
 export async function deleteSaleInvoice(movementId: string, user: AuthUser) {

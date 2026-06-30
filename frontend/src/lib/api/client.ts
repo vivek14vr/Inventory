@@ -1,5 +1,5 @@
 import { refreshAccessToken } from "@/lib/api/authSession";
-import { apiUrl, buildApiUrl, getApiBase } from "@/lib/api/base";
+import { apiUrl, buildApiUrl } from "@/lib/api/base";
 import { getAccessToken, getRefreshToken } from "@/lib/auth/token";
 import type { AuthUser, LoginResponse, PublicUser } from "@/types/auth";
 import type { Brand, Product, Warehouse } from "@/types/master";
@@ -10,7 +10,12 @@ import type {
   StockItemLedgerRow,
   StockResponse,
 } from "@/types/inventory";
-import type { TallyImport } from "@/types/imports";
+import type {
+  ProductImportPreview,
+  ProductImportResult,
+  ProductImportRowDecision,
+  TallyImport,
+} from "@/types/imports";
 import type { ReportFilters, ReportResult, ReportType } from "@/types/reports";
 import type { AuditFilters, AuditLogEntry, AuditSummary } from "@/types/audit";
 import type {
@@ -251,6 +256,7 @@ export const api = {
       brandId: string;
       stockUnit?: string;
       unitsPerStockUnit?: number;
+      baseUnit?: string;
       lowStockThreshold?: number;
       isActive?: boolean;
     }) =>
@@ -266,6 +272,7 @@ export const api = {
         brandId: string;
         stockUnit: string;
         unitsPerStockUnit: number;
+        baseUnit?: string;
         lowStockThreshold: number | null;
         isActive: boolean;
       }>
@@ -388,6 +395,7 @@ export const api = {
       data: {
         invoiceNumber?: string;
         clientName?: string;
+        quantity?: number;
         markLastWorked?: boolean;
       }
     ) =>
@@ -553,6 +561,45 @@ export const api = {
       }
       return body.data as TallyImport;
     },
+    previewProducts: async (file: File): Promise<ProductImportPreview> => {
+      const form = new FormData();
+      form.append("file", file);
+      const token = getAccessToken();
+      let response: Response;
+      try {
+        response = await fetch(apiUrl("/imports/products/preview"), {
+          method: "POST",
+          credentials: "include",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: form,
+        });
+      } catch {
+        throw new ApiError(
+          "Cannot reach server. Check that the API is running on port 4000.",
+          0,
+          "NETWORK_ERROR"
+        );
+      }
+      let body: ApiResponse<ProductImportPreview>;
+      try {
+        body = (await response.json()) as ApiResponse<ProductImportPreview>;
+      } catch {
+        throw new ApiError("Invalid response from server", response.status);
+      }
+      if (!response.ok || !body.success) {
+        throw new ApiError(body.message ?? "Preview failed", response.status, body.code);
+      }
+      return body.data as ProductImportPreview;
+    },
+    confirmProducts: (data: {
+      fileName?: string;
+      warehouseId: string;
+      rows: ProductImportRowDecision[];
+    }) =>
+      apiClient<ProductImportResult>("/imports/products/confirm", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
   },
 
   audit: {

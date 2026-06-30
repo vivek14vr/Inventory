@@ -72,6 +72,7 @@ export async function reportCurrentStock(query: StockReportQuery) {
         totalUnits: p.totalUnits,
         stockUnit: p.stockUnit,
         unitsPerStockUnit: p.unitsPerStockUnit,
+        baseUnit: p.baseUnit,
       })),
     };
   }
@@ -86,6 +87,7 @@ export async function reportCurrentStock(query: StockReportQuery) {
       quantity: r.quantity,
       stockUnit: r.stockUnit,
       unitsPerStockUnit: r.unitsPerStockUnit,
+      baseUnit: r.baseUnit,
     })),
   };
 }
@@ -95,7 +97,7 @@ export async function reportStockMovements(query: MovementReportQuery) {
   const movements = await StockMovement.find(filter)
     .sort({ createdAt: -1 })
     .limit(query.limit)
-    .populate("productId", "name stockUnit unitsPerStockUnit")
+    .populate("productId", "name stockUnit unitsPerStockUnit baseUnit")
     .populate("brandId", "name")
     .populate("warehouseId", "name code")
     .populate("destinationWarehouseId", "name code")
@@ -108,6 +110,7 @@ export async function reportStockMovements(query: MovementReportQuery) {
         name: string;
         stockUnit?: string;
         unitsPerStockUnit?: number;
+        baseUnit?: string;
       };
       const brand = m.brandId as unknown as { name: string };
       const warehouse = m.warehouseId as unknown as { name: string; code: string };
@@ -124,6 +127,7 @@ export async function reportStockMovements(query: MovementReportQuery) {
         quantity: m.quantity,
         stockUnit: product.stockUnit ?? "unit",
         unitsPerStockUnit: product.unitsPerStockUnit ?? 1,
+        baseUnit: product.baseUnit ?? "piece",
         dispatchType: m.dispatchType ?? "",
         destination: dest?.code ?? "",
         clientName: m.clientName ?? "",
@@ -155,7 +159,7 @@ export async function reportTransfers(query: TransferReportQuery) {
   const transfers = await Transfer.find(filter)
     .sort({ createdAt: -1 })
     .limit(query.limit)
-    .populate("productId", "name stockUnit unitsPerStockUnit")
+    .populate("productId", "name stockUnit unitsPerStockUnit baseUnit")
     .populate("brandId", "name")
     .populate("sourceWarehouseId", "name code")
     .populate("destinationWarehouseId", "name code")
@@ -167,6 +171,7 @@ export async function reportTransfers(query: TransferReportQuery) {
         name: string;
         stockUnit?: string;
         unitsPerStockUnit?: number;
+        baseUnit?: string;
       };
       const brand = t.brandId as unknown as { name: string };
       const source = t.sourceWarehouseId as unknown as { name: string; code: string };
@@ -180,6 +185,7 @@ export async function reportTransfers(query: TransferReportQuery) {
         quantity: t.quantity,
         stockUnit: product.stockUnit ?? "unit",
         unitsPerStockUnit: product.unitsPerStockUnit ?? 1,
+        baseUnit: product.baseUnit ?? "piece",
         from: source.code,
         to: dest.code,
         receivedAt: t.receivedAt ?? "",
@@ -215,7 +221,7 @@ async function salesMovements(query: ReportFilter) {
   return StockMovement.find(filter)
     .sort({ createdAt: -1 })
     .limit(query.limit ?? 1000)
-    .populate("productId", "name stockUnit unitsPerStockUnit")
+    .populate("productId", "name stockUnit unitsPerStockUnit baseUnit")
     .populate("brandId", "name")
     .populate("warehouseId", "name code")
     .lean();
@@ -256,6 +262,7 @@ export async function reportSalesByInvoice(query: ReportFilter) {
         name: string;
         stockUnit?: string;
         unitsPerStockUnit?: number;
+        baseUnit?: string;
       };
       const brand = m.brandId as unknown as { name: string };
       const warehouse = m.warehouseId as unknown as { code: string };
@@ -270,6 +277,7 @@ export async function reportSalesByInvoice(query: ReportFilter) {
         quantity: m.quantity,
         stockUnit: product.stockUnit ?? "unit",
         unitsPerStockUnit: product.unitsPerStockUnit ?? 1,
+        baseUnit: product.baseUnit ?? "piece",
       };
     }),
   };

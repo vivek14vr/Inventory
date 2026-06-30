@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { api, ApiError } from "@/lib/api/client";
 import { productDisplayName } from "@/lib/products/productDisplayName";
 import {
+  formatBaseQuantityWithStockUnit,
   quantityEntryToBase,
   type QuantityEntryMode,
 } from "@/lib/products/productUnits";
@@ -194,13 +195,15 @@ export function StockInForm({
           returnMode === "client" ? invoiceNumber.trim() || undefined : undefined,
         notes: notes || undefined,
       });
+      const balanceProduct = transfer?.product ?? selectedProduct;
+      const formattedBalance = formatBaseQuantityWithStockUnit(result.balance, balanceProduct);
       const msg = transfer
-        ? `Transfer received. New balance: ${result.balance}`
+        ? `Transfer received. New balance: ${formattedBalance}`
         : returnMode === "client"
-          ? `Client return recorded. New balance: ${result.balance}`
+          ? `Client return recorded. New balance: ${formattedBalance}`
           : returnMode === "warehouse"
-            ? `Warehouse return recorded. New balance: ${result.balance}`
-            : `Stock added. New balance: ${result.balance}`;
+            ? `Warehouse return recorded. New balance: ${formattedBalance}`
+            : `Stock added. New balance: ${formattedBalance}`;
       setSuccess(msg);
       onSuccess?.(msg);
       if (!transfer) {

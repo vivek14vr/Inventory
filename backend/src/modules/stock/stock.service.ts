@@ -22,9 +22,9 @@ import { Permission } from "../../shared/constants/permissions.js";
 import {
   getWarehouseIdsForPermission,
   isAdmin,
+  resolveWarehouseIdForAnyPermission,
 } from "../../shared/utils/permissions.js";
 import { resolveWarehouseId } from "../../shared/utils/warehouseAccess.js";
-import { generateInvoiceNumber } from "../../shared/utils/invoiceNumber.js";
 import {
   filterBySearch,
   paginateArray,
@@ -133,6 +133,7 @@ export async function listBalancesForUser(user: AuthUser, query: BalancesQuery) 
       brandName: brand.name,
       stockUnit: product.stockUnit ?? "unit",
       unitsPerStockUnit: product.unitsPerStockUnit ?? 1,
+      baseUnit: product.baseUnit ?? "piece",
       quantity,
       updatedAt: new Date(),
     };
@@ -157,15 +158,20 @@ export async function listBalancesForUser(user: AuthUser, query: BalancesQuery) 
 
 export async function stockIn(input: StockInInput, user: AuthUser) {
   return runInTransaction(async (session) => {
+    if (input.transferId) {
+      const receiveWarehouseId = resolveWarehouseIdForAnyPermission(
+        user,
+        [Permission.STOCK_IN, Permission.TRANSFERS_RECEIVE],
+        input.warehouseId
+      );
+      return receiveTransfer(input, user, receiveWarehouseId, session);
+    }
+
     const warehouseId = resolveWarehouseId(
       user,
       input.warehouseId,
       Permission.STOCK_IN
     );
-
-    if (input.transferId) {
-      return receiveTransfer(input, user, warehouseId, session);
-    }
 
     const { productId, brandId, name: productName } = await inventoryService.validateProductForBrand(
       input.productId,
@@ -437,8 +443,7 @@ export async function stockOut(input: StockOutInput, user: AuthUser) {
               : undefined,
           invoiceNumber:
             input.dispatchType === DispatchType.DIRECT_SELLING
-              ? input.invoiceNumber?.trim() ||
-                (await generateInvoiceNumber())
+              ? input.invoiceNumber?.trim() || undefined
               : undefined,
           destinationWarehouseId,
           notes: input.notes,

@@ -92,6 +92,43 @@ export function resolveWarehouseIdForPermission(
   throw new BadRequestError("warehouseId is required");
 }
 
+/** Resolve an accessible warehouse where the user holds ANY of the given permissions. */
+export function resolveWarehouseIdForAnyPermission(
+  user: AuthUser,
+  codes: PermissionCode[],
+  requestedWarehouseId?: string
+): string {
+  if (isAdmin(user)) {
+    if (!requestedWarehouseId || !Types.ObjectId.isValid(requestedWarehouseId)) {
+      throw new BadRequestError("warehouseId is required");
+    }
+    return requestedWarehouseId;
+  }
+
+  const allowed = Array.from(
+    new Set(codes.flatMap((code) => getWarehouseIdsForPermission(user, code)))
+  );
+  if (allowed.length === 0) {
+    throw new ForbiddenError("You do not have permission for this warehouse");
+  }
+
+  if (requestedWarehouseId) {
+    if (!Types.ObjectId.isValid(requestedWarehouseId)) {
+      throw new BadRequestError("Invalid warehouse ID");
+    }
+    if (!allowed.includes(requestedWarehouseId)) {
+      throw new ForbiddenError("You do not have access to this warehouse");
+    }
+    return requestedWarehouseId;
+  }
+
+  if (allowed.length === 1) {
+    return allowed[0];
+  }
+
+  throw new BadRequestError("warehouseId is required");
+}
+
 /** Encode grants for JWT: `code` or `code:warehouseId` */
 export function encodePermissionsForJwt(grants: PermissionGrant[]): string[] {
   return grants.map((g) =>

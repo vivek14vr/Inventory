@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { formatDueTime } from "@/lib/checklists/formatDueTime";
-import { AUTH_ROUTES } from "@/lib/auth/constants";
 
 type NotificationBellProps = {
   notificationsHref: string;

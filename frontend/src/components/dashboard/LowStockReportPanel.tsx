@@ -62,6 +62,7 @@ export function LowStockReportPanel({ items, totalCount }: LowStockReportPanelPr
                     quantity={item.quantity}
                     stockUnit={item.stockUnit}
                     unitsPerStockUnit={item.unitsPerStockUnit}
+                    baseUnit={item.baseUnit}
                     size="sm"
                     align="right"
                     className="[&_span:first-child]:!font-semibold"

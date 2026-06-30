@@ -118,6 +118,7 @@ export default function AppInventoryPage() {
                       quantity={b.quantity}
                       stockUnit={b.stockUnit}
                       unitsPerStockUnit={b.unitsPerStockUnit}
+                      baseUnit={b.baseUnit}
                       size="md"
                       align="right"
                     />

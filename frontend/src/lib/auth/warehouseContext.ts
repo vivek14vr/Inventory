@@ -3,7 +3,6 @@ import {
   isWarehouseScopedPermission,
   Permission,
   type PermissionCode,
-  type PermissionGrant,
 } from "@/lib/auth/permissions";
 import type { AuthUser } from "@/types/auth";
 

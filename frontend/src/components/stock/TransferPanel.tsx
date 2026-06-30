@@ -172,6 +172,7 @@ export function TransferPanel({
                         quantity={t.quantity}
                         stockUnit={t.product.stockUnit}
                         unitsPerStockUnit={t.product.unitsPerStockUnit}
+                        baseUnit={t.product.baseUnit}
                         size="sm"
                       />
                     </div>

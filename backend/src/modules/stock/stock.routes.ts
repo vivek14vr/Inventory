@@ -2,7 +2,10 @@ import { Router } from "express";
 import { Permission } from "../../shared/constants/permissions.js";
 import { BadRequestError } from "../../shared/errors/AppError.js";
 import { authenticate } from "../../shared/middleware/authenticate.js";
-import { requirePermission } from "../../shared/middleware/requirePermission.js";
+import {
+  requireAnyPermission,
+  requirePermission,
+} from "../../shared/middleware/requirePermission.js";
 import { asyncHandler } from "../../shared/utils/asyncHandler.js";
 import { sendSuccess } from "../../shared/utils/apiResponse.js";
 import * as stockService from "./stock.service.js";
@@ -47,7 +50,9 @@ router.get(
 
 router.post(
   "/in",
-  requirePermission(Permission.STOCK_IN, { warehouseIdFrom: "body" }),
+  requireAnyPermission([Permission.STOCK_IN, Permission.TRANSFERS_RECEIVE], {
+    warehouseIdFrom: "body",
+  }),
   asyncHandler(async (req, res) => {
     const parsed = stockInSchema.safeParse(req.body);
     if (!parsed.success) {

@@ -138,7 +138,7 @@ export default function AppDashboardPage() {
             {showStock && (
               <>
                 <StatCard label="Products in stock" value={totalSkus} variant="info" />
-                <StatCard label="Total pieces" value={totalQty.toLocaleString()} />
+                <StatCard label="Total quantity" value={totalQty.toLocaleString()} />
               </>
             )}
             {showTransfers && (
@@ -238,6 +238,7 @@ export default function AppDashboardPage() {
                         quantity={b.quantity}
                         stockUnit={b.stockUnit}
                         unitsPerStockUnit={b.unitsPerStockUnit}
+                        baseUnit={b.baseUnit}
                         size="sm"
                         align="right"
                       />

@@ -8,6 +8,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { api, ApiError } from "@/lib/api/client";
 import {
+  formatBaseQuantityWithStockUnit,
   quantityEntryToBase,
   type QuantityEntryMode,
 } from "@/lib/products/productUnits";
@@ -79,6 +80,7 @@ export function StockOutForm({
   const [submitting, setSubmitting] = useState(false);
   const [currentBalance, setCurrentBalance] = useState<number | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
+  const [balanceError, setBalanceError] = useState("");
 
   const resolvedWarehouseId = resolveWarehouseId(
     warehouseId,
@@ -157,19 +159,27 @@ export function StockOutForm({
   useEffect(() => {
     if (step !== "confirm" || !resolvedWarehouseId || !productId) {
       setCurrentBalance(null);
+      setBalanceError("");
       return;
     }
     let cancelled = false;
     setLoadingBalance(true);
+    setBalanceError("");
     api.stock
       .balances({ warehouseId: resolvedWarehouseId, productId })
       .then((result) => {
         if (!cancelled) {
           setCurrentBalance(result.items[0]?.quantity ?? 0);
+          setBalanceError("");
         }
       })
-      .catch(() => {
-        if (!cancelled) setCurrentBalance(null);
+      .catch((err) => {
+        if (!cancelled) {
+          setCurrentBalance(null);
+          setBalanceError(
+            err instanceof ApiError ? err.message : "Could not load stock level"
+          );
+        }
       })
       .finally(() => {
         if (!cancelled) setLoadingBalance(false);
@@ -187,6 +197,8 @@ export function StockOutForm({
 
   const exceedsAvailable =
     currentBalance !== null && enteredBaseQty > 0 && enteredBaseQty > currentBalance;
+  const cannotConfirmQuantity =
+    step === "confirm" && (loadingBalance || currentBalance === null || Boolean(balanceError));
 
   function selectWarehouse(id: string) {
     setWarehouseId(id);
@@ -298,6 +310,10 @@ export function StockOutForm({
     e.preventDefault();
     setError("");
     setSuccess("");
+    if (cannotConfirmQuantity) {
+      setError(balanceError || "Wait until the current stock level is loaded");
+      return;
+    }
     setSubmitting(true);
     const type = dispatchType || defaultDispatchType;
     try {
@@ -318,14 +334,18 @@ export function StockOutForm({
             : undefined,
         notes: notes || undefined,
       });
+      const formattedBalance = formatBaseQuantityWithStockUnit(
+        result.balance,
+        selectedProduct
+      );
       const msg =
         type === "TRANSFER"
-          ? `Transfer sent. Remaining balance: ${result.balance}`
+          ? `Transfer sent. Remaining balance: ${formattedBalance}`
           : `Sale recorded${
               result.movement.invoiceNumber
                 ? ` · Invoice ${result.movement.invoiceNumber}`
                 : ""
-            }. Remaining balance: ${result.balance}`;
+            }. Remaining balance: ${formattedBalance}`;
       setSuccess(msg);
       onSuccess?.(msg);
       resetFlow();
@@ -512,8 +532,11 @@ export function StockOutForm({
                         quantity={currentBalance}
                         stockUnit={selectedProduct.stockUnit}
                         unitsPerStockUnit={selectedProduct.unitsPerStockUnit}
+                        baseUnit={selectedProduct.baseUnit}
                         size="lg"
                       />
+                    ) : balanceError ? (
+                      <p className="text-sm font-semibold text-red-600">{balanceError}</p>
                     ) : (
                       <p className="text-sm text-stone-500">Could not load stock level</p>
                     )}
@@ -531,7 +554,8 @@ export function StockOutForm({
 
               {exceedsAvailable ? (
                 <p className="text-sm font-semibold text-red-600">
-                  Not enough stock. Available: {currentBalance?.toLocaleString()} pieces.
+                  Not enough stock. Available:{" "}
+                  {formatBaseQuantityWithStockUnit(currentBalance ?? 0, selectedProduct)}.
                 </p>
               ) : null}
 
@@ -556,10 +580,11 @@ export function StockOutForm({
                       value={invoiceNumber}
                       onChange={(e) => setInvoiceNumber(e.target.value)}
                       className="form-input mt-2"
-                      placeholder="Auto-generated if left blank"
+                      placeholder="Leave blank if unknown"
                     />
                     <p className="mt-1 text-sm text-stone-500">
-                      Leave blank to auto-generate. The invoice appears on the Invoices page.
+                      Leave blank to record the sale without an invoice number. You can add it
+                      later on the Invoices page.
                     </p>
                   </div>
                 </div>
@@ -581,7 +606,7 @@ export function StockOutForm({
               type="submit"
               size="xl"
               loading={submitting}
-              disabled={exceedsAvailable}
+              disabled={exceedsAvailable || cannotConfirmQuantity}
               className="mt-6 w-full"
             >
               {dispatchType === "TRANSFER" ? "Send transfer" : "Record sale"}
