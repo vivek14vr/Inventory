@@ -2,6 +2,7 @@ import { Types } from "mongoose";
 import type mongoose from "mongoose";
 import { AuditLog } from "../../models/AuditLog.js";
 import { Brand } from "../../models/Brand.js";
+import { InventoryBalance } from "../../models/InventoryBalance.js";
 import { Product } from "../../models/Product.js";
 import { StockMovement } from "../../models/StockMovement.js";
 import { Transfer } from "../../models/Transfer.js";
@@ -124,7 +125,10 @@ export async function listBalancesForUser(user: AuthUser, query: BalancesQuery) 
       throw new NotFoundError("Product not found");
     }
     const brand = product.brandId as { _id: Types.ObjectId; name: string };
-    const quantity = await inventoryService.getBalance(warehouseId, query.productId);
+    const balance = await InventoryBalance.findOne({
+      warehouseId,
+      productId: query.productId,
+    }).lean();
     const row = {
       productId: query.productId,
       productName: product.name,
@@ -134,8 +138,8 @@ export async function listBalancesForUser(user: AuthUser, query: BalancesQuery) 
       stockUnit: product.stockUnit ?? "unit",
       unitsPerStockUnit: product.unitsPerStockUnit ?? 1,
       baseUnit: product.baseUnit ?? "piece",
-      quantity,
-      updatedAt: new Date(),
+      quantity: balance?.quantity ?? 0,
+      updatedAt: balance?.updatedAt ?? null,
     };
     return paginateArray([row], query);
   }
@@ -182,6 +186,10 @@ export async function stockIn(input: StockInInput, user: AuthUser) {
       Warehouse.findById(warehouseId).lean(),
       Brand.findById(brandId).lean(),
     ]);
+
+    if (!warehouse || warehouse.isActive === false) {
+      throw new BadRequestError("Selected warehouse is inactive");
+    }
 
     const newQty = await inventoryService.adjustBalance(
       warehouseId,
@@ -280,6 +288,24 @@ async function receiveTransfer(
     );
   }
 
+  // Atomically claim the transfer before crediting stock. If a concurrent
+  // request (or admin action) already moved it out of PENDING, this returns
+  // null and we abort without double-crediting the destination balance.
+  const claimed = await Transfer.findOneAndUpdate(
+    { _id: transfer._id, status: TransferStatus.PENDING },
+    {
+      $set: {
+        status: TransferStatus.RECEIVED,
+        receivedBy: new Types.ObjectId(user.id),
+        receivedAt: new Date(),
+      },
+    },
+    { new: true, ...(session ? { session } : {}) }
+  );
+  if (!claimed) {
+    throw new BadRequestError("Transfer is already received or cancelled");
+  }
+
   const newQty = await inventoryService.adjustBalance(
     warehouseId,
     String(transfer.productId),
@@ -303,11 +329,15 @@ async function receiveTransfer(
     dbSession(session)
   );
 
+  await Transfer.updateOne(
+    { _id: transfer._id },
+    { $set: { stockInMovementId: movement._id } },
+    dbSession(session)
+  );
   transfer.status = TransferStatus.RECEIVED;
   transfer.stockInMovementId = movement._id;
-  transfer.receivedBy = new Types.ObjectId(user.id);
-  transfer.receivedAt = new Date();
-  await transfer.save(dbSession(session));
+  transfer.receivedBy = claimed.receivedBy;
+  transfer.receivedAt = claimed.receivedAt;
 
   const populatedTransfer = await Transfer.findById(transfer._id)
     .populate("productId", "name")
@@ -379,6 +409,15 @@ export async function stockOut(input: StockOutInput, user: AuthUser) {
       input.brandId
     );
 
+    const [sourceWarehouse, brand] = await Promise.all([
+      Warehouse.findById(warehouseId).lean(),
+      Brand.findById(brandId).lean(),
+    ]);
+
+    if (!sourceWarehouse || sourceWarehouse.isActive === false) {
+      throw new BadRequestError("Selected warehouse is inactive");
+    }
+
     await inventoryService.assertSufficientStock(
       warehouseId,
       String(productId),
@@ -397,11 +436,6 @@ export async function stockOut(input: StockOutInput, user: AuthUser) {
     let destinationWarehouseId: Types.ObjectId | undefined;
     let destinationWarehouse: { _id: Types.ObjectId; name: string; code: string } | null =
       null;
-
-    const [sourceWarehouse, brand] = await Promise.all([
-      Warehouse.findById(warehouseId).lean(),
-      Brand.findById(brandId).lean(),
-    ]);
 
     if (input.dispatchType === DispatchType.TRANSFER) {
       if (!input.destinationWarehouseId) {

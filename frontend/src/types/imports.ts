@@ -50,6 +50,10 @@ export type ProductImportPreviewRow = {
     unitsPerStockUnit: number;
     lowStockThreshold?: number;
   };
+  reactivatesProduct?: {
+    id: string;
+    name: string;
+  };
 };
 
 export type ProductImportExistingProduct = {

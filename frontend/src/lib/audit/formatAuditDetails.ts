@@ -261,6 +261,24 @@ export function formatAuditDetails(log: AuditLogEntry): string {
     return parts.join(" · ");
   }
 
+  if (action === "PRODUCT_IMPORT") {
+    const file = metaString(meta.fileName);
+    const warehouse = metaString(meta.warehouseName);
+    const code = metaString(meta.warehouseCode);
+    const success = metaString(meta.successCount);
+    const failed = metaString(meta.failedCount);
+    return [
+      "Product catalog import",
+      file,
+      warehouse ? `audit warehouse ${warehouse}${code ? ` (${code})` : ""}` : undefined,
+      success !== undefined && failed !== undefined
+        ? `${success} imported, ${failed} failed`
+        : undefined,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
   if (action === "USER_UPDATED") {
     const target = metaString(meta.targetUserName) ?? metaString(meta.targetUserEmail);
     const rawChanges = meta.changes as string[] | undefined;

@@ -55,7 +55,12 @@ export function findProductByBrandAndLabel<T extends ProductWithNames>(
   return map.get(key);
 }
 
-/** Match when any import label equals any existing primary/secondary name for the brand. */
+/**
+ * Match when any import label equals any existing primary/secondary name for the
+ * brand. Throws if the import row overlaps with more than one distinct product,
+ * so a merge never silently targets the wrong record when historical data has
+ * duplicate normalized labels under a brand.
+ */
 export function findProductByBrandLabelOverlap<T extends ProductWithNames>(
   products: T[],
   brandId: string,
@@ -70,6 +75,7 @@ export function findProductByBrandLabelOverlap<T extends ProductWithNames>(
 
   if (importLabels.length === 0) return undefined;
 
+  const matches: T[] = [];
   for (const product of products) {
     if (getBrandId(product) !== brandId) continue;
     const existingLabels = [product.name, product.secondaryName]
@@ -77,9 +83,15 @@ export function findProductByBrandLabelOverlap<T extends ProductWithNames>(
       .filter((label): label is string => Boolean(label))
       .map((label) => normalizeProductName(label));
     if (importLabels.some((label) => existingLabels.includes(label))) {
-      return product;
+      matches.push(product);
     }
   }
 
-  return undefined;
+  if (matches.length > 1) {
+    throw new BadRequestError(
+      `"${primaryName.trim()}" matches multiple existing products for this brand. Resolve the duplicate before merging, or pick the target product explicitly.`
+    );
+  }
+
+  return matches[0];
 }

@@ -20,25 +20,36 @@ export async function adjustBalance(
   delta: number,
   session?: mongoose.ClientSession | null
 ): Promise<number> {
-  const existing = await InventoryBalance.findOne({ warehouseId, productId }).session(
-    session ?? null
-  );
-  const current = existing?.quantity ?? 0;
-  const next = current + delta;
-
-  if (next < 0) {
-    throw new BadRequestError(
-      `Insufficient stock. Available: ${current}, requested: ${Math.abs(delta)}`
-    );
+  if (delta === 0) {
+    return getBalance(warehouseId, productId, session);
   }
 
-  await InventoryBalance.findOneAndUpdate(
-    { warehouseId, productId },
-    { $set: { quantity: next } },
-    { upsert: true, ...(session ? { session } : {}) }
-  );
+  // Guarded, atomic decrement: only succeeds when enough stock exists. This
+  // prevents two concurrent stock-outs/transfers from both passing a separate
+  // read-then-write check and overselling (important on standalone MongoDB
+  // where multi-document transactions are unavailable).
+  if (delta < 0) {
+    const updated = await InventoryBalance.findOneAndUpdate(
+      { warehouseId, productId, quantity: { $gte: -delta } },
+      { $inc: { quantity: delta } },
+      { new: true, ...(session ? { session } : {}) }
+    );
+    if (!updated) {
+      const current = await getBalance(warehouseId, productId, session);
+      throw new BadRequestError(
+        `Insufficient stock. Available: ${current}, requested: ${Math.abs(delta)}`
+      );
+    }
+    return updated.quantity;
+  }
 
-  return next;
+  // Atomic increment; creates the balance row if it does not exist yet.
+  const updated = await InventoryBalance.findOneAndUpdate(
+    { warehouseId, productId },
+    { $inc: { quantity: delta } },
+    { new: true, upsert: true, ...(session ? { session } : {}) }
+  );
+  return updated?.quantity ?? delta;
 }
 
 export async function setBalance(
@@ -51,15 +62,15 @@ export async function setBalance(
     throw new BadRequestError("Quantity cannot be negative");
   }
 
-  const previous = await getBalance(warehouseId, productId, session);
-  const delta = quantity - previous;
-
-  if (delta === 0) {
-    return { previous, next: previous, delta: 0 };
-  }
-
-  const next = await adjustBalance(warehouseId, productId, delta, session);
-  return { previous, next, delta };
+  // Atomic absolute set; returns the pre-update document so we can report the
+  // previous quantity and delta without a separate racy read.
+  const previousDoc = await InventoryBalance.findOneAndUpdate(
+    { warehouseId, productId },
+    { $set: { quantity } },
+    { new: false, upsert: true, ...(session ? { session } : {}) }
+  );
+  const previous = previousDoc?.quantity ?? 0;
+  return { previous, next: quantity, delta: quantity - previous };
 }
 
 export async function assertSufficientStock(
@@ -111,16 +122,23 @@ export async function validateProductForBrand(
 
 export async function listBalances(warehouseId: string) {
   const balances = await InventoryBalance.find({ warehouseId, quantity: { $gt: 0 } })
-    .populate<{ productId: { _id: Types.ObjectId; name: string; secondaryName?: string; stockUnit?: string; unitsPerStockUnit?: number; brandId: Types.ObjectId } }>({
+    .populate<{ productId: { _id: Types.ObjectId; name: string; secondaryName?: string; stockUnit?: string; unitsPerStockUnit?: number; isActive?: boolean; brandId: Types.ObjectId } }>({
       path: "productId",
-      select: "name secondaryName stockUnit unitsPerStockUnit baseUnit brandId",
-      populate: { path: "brandId", select: "name" },
+      select: "name secondaryName stockUnit unitsPerStockUnit baseUnit isActive brandId",
+      populate: { path: "brandId", select: "name isActive" },
     })
     .sort({ updatedAt: -1 })
     .lean();
 
   return balances
     .filter((b) => b.productId && typeof b.productId === "object")
+    .filter((b) => {
+      const product = b.productId as unknown as {
+        isActive?: boolean;
+        brandId?: { isActive?: boolean };
+      };
+      return product.isActive !== false && product.brandId?.isActive !== false;
+    })
     .map((b) => {
       const product = b.productId as unknown as {
         _id: Types.ObjectId;

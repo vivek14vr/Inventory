@@ -64,14 +64,14 @@ async function fetchStockRows(query: StockFilters): Promise<StockRow[]> {
   }
 
   const balances = await InventoryBalance.find(filter)
-    .populate<{ warehouseId: { _id: Types.ObjectId; name: string; code: string } }>(
+    .populate<{ warehouseId: { _id: Types.ObjectId; name: string; code: string; isActive?: boolean } }>(
       "warehouseId",
-      "name code"
+      "name code isActive"
     )
-    .populate<{ productId: { _id: Types.ObjectId; name: string; secondaryName?: string; lowStockThreshold?: number; stockUnit?: string; unitsPerStockUnit?: number; brandId: Types.ObjectId } }>({
+    .populate<{ productId: { _id: Types.ObjectId; name: string; secondaryName?: string; lowStockThreshold?: number; stockUnit?: string; unitsPerStockUnit?: number; isActive?: boolean; brandId: Types.ObjectId } }>({
       path: "productId",
-      select: "name secondaryName lowStockThreshold stockUnit unitsPerStockUnit baseUnit brandId",
-      populate: { path: "brandId", select: "name" },
+      select: "name secondaryName lowStockThreshold stockUnit unitsPerStockUnit baseUnit isActive brandId",
+      populate: { path: "brandId", select: "name isActive" },
     })
     .sort({ updatedAt: -1 })
     .lean();
@@ -90,13 +90,19 @@ async function fetchStockRows(query: StockFilters): Promise<StockRow[]> {
       stockUnit?: string;
       unitsPerStockUnit?: number;
       baseUnit?: string;
-      brandId: { _id: Types.ObjectId; name: string };
+      isActive?: boolean;
+      brandId: { _id: Types.ObjectId; name: string; isActive?: boolean };
     };
     const warehouse = b.warehouseId as unknown as {
       _id: Types.ObjectId;
       name: string;
       code: string;
+      isActive?: boolean;
     };
+
+    if (product.isActive === false) continue;
+    if (product.brandId?.isActive === false) continue;
+    if (warehouse.isActive === false) continue;
 
     rows.push({
       warehouseId: String(warehouse._id),
@@ -591,8 +597,16 @@ export async function getStockItemDetail(query: StockItemDetailQuery) {
     if (t._id === StockMovementType.STOCK_OUT) totalStockOut = t.total;
   }
 
+  // Running balances must be computed on the chronological (createdAt desc)
+  // order returned by the query; each row's balanceAfter is then fixed, so we
+  // can safely re-order rows for display by the requested sort field.
   const ledger = applyRunningBalances(currentQuantity, allMovements);
-  const { items, pagination } = paginateArray(ledger, query);
+  const sortedLedger = sortRows(ledger, query.sortBy, query.sortOrder ?? "desc", {
+    createdAt: (r) => new Date(r.createdAt).getTime(),
+    quantity: (r) => r.quantity,
+    type: (r) => r.type,
+  });
+  const { items, pagination } = paginateArray(sortedLedger, query);
 
   return {
     item: {
@@ -641,7 +655,9 @@ export async function listMovementHistory(query: MovementsQuery) {
       (filter.createdAt as Record<string, Date>).$gte = new Date(query.dateFrom);
     }
     if (query.dateTo) {
-      (filter.createdAt as Record<string, Date>).$lte = new Date(query.dateTo);
+      const end = new Date(query.dateTo);
+      end.setHours(23, 59, 59, 999);
+      (filter.createdAt as Record<string, Date>).$lte = end;
     }
   }
 

@@ -342,7 +342,11 @@ export const api = {
       params?: PaginationParams & {
         warehouseId?: string;
         brandId?: string;
+        productId?: string;
         type?: string;
+        dateFrom?: string;
+        dateTo?: string;
+        search?: string;
         sortBy?: string;
         sortOrder?: "asc" | "desc";
       }

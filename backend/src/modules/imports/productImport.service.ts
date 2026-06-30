@@ -46,6 +46,10 @@ export type ProductImportPreviewRow = ParsedProductImportRow & {
     unitsPerStockUnit: number;
     lowStockThreshold?: number;
   };
+  reactivatesProduct?: {
+    id: string;
+    name: string;
+  };
 };
 
 export type ProductImportResultRow = {
@@ -217,13 +221,15 @@ async function loadImportContext() {
   );
 
   const products = await Product.find({ isActive: true }).lean();
+  const allProducts = await Product.find().lean();
 
   return {
     brands,
     brandByName,
     allBrandByName,
-    brandIdToName: new Map(brands.map((b) => [String(b._id), b.name])),
+    brandIdToName: new Map(allBrands.map((b) => [String(b._id), b.name])),
     products,
+    allProducts,
   };
 }
 
@@ -269,10 +275,18 @@ async function resolveBrandForRow(
       if (loaded.isActive === false) {
         await Brand.updateOne({ _id: loaded._id }, { $set: { isActive: true } });
         loaded.isActive = true;
+        brand = loaded;
+        brands.push(loaded);
+      } else {
+        throw new BadRequestError(
+          `Brand "${trimmed}" already exists. Use "Use existing brand" to merge into it instead.`
+        );
       }
-      brand = loaded;
-      brands.push(loaded);
     }
+  } else {
+    throw new BadRequestError(
+      `Brand "${trimmed}" already exists. Use "Use existing brand" to merge into it instead.`
+    );
   }
   if (brand) {
     return brand;
@@ -296,7 +310,7 @@ async function resolveBrandForRow(
 
 export async function previewProductImport(fileBuffer: Buffer) {
   const parsedRows = parseProductExcelBuffer(fileBuffer);
-  const { brands, brandByName, allBrandByName, brandIdToName, products } =
+  const { brands, brandByName, allBrandByName, brandIdToName, allProducts } =
     await loadImportContext();
 
   const previewRows: ProductImportPreviewRow[] = parsedRows.map((row) => {
@@ -317,9 +331,10 @@ export async function previewProductImport(fileBuffer: Buffer) {
         : undefined;
 
     let matchedProduct: ProductImportPreviewRow["matchedProduct"];
+    let reactivatesProduct: ProductImportPreviewRow["reactivatesProduct"];
     if (brand && errors.length === 0) {
       const match = findProductByBrandLabelOverlap(
-        products,
+        allProducts,
         String(brand._id),
         row.primaryName,
         row.secondaryName,
@@ -335,6 +350,12 @@ export async function previewProductImport(fileBuffer: Buffer) {
           unitsPerStockUnit: match.unitsPerStockUnit ?? 1,
           lowStockThreshold: match.lowStockThreshold,
         };
+        if (match.isActive === false) {
+          reactivatesProduct = {
+            id: String(match._id),
+            name: match.name,
+          };
+        }
       }
     }
 
@@ -346,6 +367,7 @@ export async function previewProductImport(fileBuffer: Buffer) {
       brandId,
       matchedBrand,
       reactivatesBrand,
+      reactivatesProduct,
       errors,
       matchedProduct,
     };
@@ -361,7 +383,7 @@ export async function previewProductImport(fileBuffer: Buffer) {
       id: String(brand._id),
       name: brand.name,
     })),
-    existingProducts: products.map((product) => ({
+    existingProducts: allProducts.map((product) => ({
       id: String(product._id),
       name: product.name,
       secondaryName: product.secondaryName,
@@ -420,7 +442,7 @@ export async function confirmProductImport(
     throw new NotFoundError("Warehouse not found or inactive");
   }
 
-  const { brands, products } = await loadImportContext();
+  const { brands, products, allProducts } = await loadImportContext();
   const results: ProductImportResultRow[] = [];
   let successCount = 0;
   let failedCount = 0;
@@ -462,8 +484,15 @@ export async function confirmProductImport(
         const targetId = row.mergeTargetProductId;
         let targetProduct =
           targetId && Types.ObjectId.isValid(targetId)
-            ? products.find((product) => String(product._id) === targetId)
+            ? allProducts.find((product) => String(product._id) === targetId)
             : undefined;
+
+        if (!targetProduct && targetId && Types.ObjectId.isValid(targetId)) {
+          const loaded = await Product.findById(targetId).lean();
+          if (loaded) {
+            targetProduct = loaded;
+          }
+        }
 
         if (targetProduct && String(targetProduct.brandId) !== brandId) {
           results.push({
@@ -478,7 +507,7 @@ export async function confirmProductImport(
 
         if (!targetProduct) {
           targetProduct = findProductByBrandLabelOverlap(
-            products,
+            allProducts,
             brandId,
             row.primaryName,
             row.secondaryName,
@@ -496,24 +525,40 @@ export async function confirmProductImport(
           continue;
         }
 
+        const wasInactive = targetProduct.isActive === false;
         const payload = productPayloadFromRow(parsed, brandId);
+        const nextName = payload.name;
+        const nextSecondary =
+          payload.secondaryName &&
+          normalizeProductName(payload.secondaryName) !==
+            normalizeProductName(nextName)
+            ? payload.secondaryName
+            : targetProduct.secondaryName;
         await updateProduct(String(targetProduct._id), {
+          name: nextName,
           baseUnit: payload.baseUnit,
           stockUnit: payload.stockUnit,
           unitsPerStockUnit: payload.unitsPerStockUnit,
           lowStockThreshold: payload.lowStockThreshold ?? null,
-          secondaryName:
-            payload.secondaryName &&
-            normalizeProductName(payload.secondaryName) !==
-              normalizeProductName(targetProduct.name)
-              ? payload.secondaryName
-              : targetProduct.secondaryName,
+          secondaryName: nextSecondary,
+          ...(wasInactive ? { isActive: true } : {}),
         });
+
+        if (wasInactive) {
+          const idx = allProducts.findIndex(
+            (product) => String(product._id) === String(targetProduct!._id)
+          );
+          if (idx >= 0) {
+            allProducts[idx] = { ...allProducts[idx], isActive: true };
+          }
+        }
 
         results.push({
           ...base,
           status: "SUCCESS",
-          message: `Merged into "${targetProduct.name}"`,
+          message: wasInactive
+            ? `Reactivated and merged into "${targetProduct.name}"`
+            : `Merged into "${targetProduct.name}"`,
           productId: String(targetProduct._id),
         });
         successCount++;

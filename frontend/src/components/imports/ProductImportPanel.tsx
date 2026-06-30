@@ -550,6 +550,11 @@ function ImportReviewTable({
                           {row.matchedProduct.secondaryName ? (
                             <div className="text-xs">{row.matchedProduct.secondaryName}</div>
                           ) : null}
+                          {row.reactivatesProduct ? (
+                            <div className="text-xs text-amber-700">
+                              Will reactivate {row.reactivatesProduct.name}
+                            </div>
+                          ) : null}
                         </>
                       ) : (
                         "—"

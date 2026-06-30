@@ -2,7 +2,7 @@
 
 **Date:** 30 June 2026  
 **Scope:** Full project validation — RBAC, stock/transfer flows, API contracts, navigation, and UX  
-**Build status:** Backend and frontend TypeScript builds pass. Backend test suite: 16 passing unit tests (`npm test`). All audit items addressed.
+**Build status:** Backend and frontend TypeScript builds pass. Backend test suite: 19 passing unit tests (`npm test`). Frontend `lint` and full production `build` pass. All audit items across six passes addressed.
 
 ---
 
@@ -15,7 +15,7 @@
 | Medium | 14 |
 | Low | 6 |
 
-**Recommended fix order:** Products pagination → `/app/inventory` route guard → Transfer history scoping → Middleware fallback → Return flow permissions → Staff routes for invoice fix and audit links.
+**Recommended fix order:** All pass-1–5 items complete. Future enhancements: broader integration/E2E tests; optional `sortBy` on stock item detail ledger (balance column depends on chronological order).
 
 ---
 
@@ -113,7 +113,7 @@ The following items have been **fixed** (builds pass, no lint errors):
 | **Files** | `backend/src/modules/imports/productImport.service.ts` (`previewProductImport`, `resolveBrandForRow`) |
 | **Issue** | Preview matches via exact lowercase map; confirm uses case-insensitive regex with no `isActive` filter, and `brandAction: "create"` still reuses an existing name match. Inactive brands/products matched inconsistently between preview and confirm. |
 | **Impact** | Preview shows “new brand/product” while confirm merges or fails (“Brand name already exists”, duplicate product). |
-| **Fix** | Confirm now **reactivates** an inactive brand it matches by name instead of throwing on the unique-name constraint. Preview also detects inactive-name matches and shows “Will reactivate …” while keeping the default action as create/reactivate, avoiding an invalid merge target. |
+| **Fix** | Confirm now **reactivates** an inactive brand it matches by name instead of throwing on the unique-name constraint. Preview also detects inactive-name matches and shows “Will reactivate …”. Pass 5 (P5-1) ensures `brandAction: "create"` no longer silently reuses an **active** existing brand — it fails with a clear message instead. |
 | **Status** | Fixed |
 
 ## Medium (pass 2)
@@ -177,7 +177,51 @@ The following items have been **fixed** (builds pass, no lint errors):
 
 ---
 
-## Critical
+# Fifth audit pass — 30 June 2026 (import edge cases + audit UX)
+
+**Scope:** Residual gaps from pass 2 (P2-4 partial), inactive product preview/confirm parity, and `PRODUCT_IMPORT` activity-log formatting.
+**Status:** Fixed.
+
+| # | Issue | Files | Status |
+|---|-------|-------|--------|
+| P5-1 | `brandAction: "create"` still reused an active existing brand on confirm | `productImport.service.ts` (`resolveBrandForRow`) | **Fixed** — create now fails with a clear message when an active brand name already exists; inactive names still reactivate |
+| P5-2 | Inactive products invisible in import preview; confirm create failed on duplicate inactive labels | `productImport.service.ts` (`loadImportContext`, preview + merge) | **Fixed** — preview matches inactive products, shows “Will reactivate …”, merge reactivates on confirm; merge dropdown includes inactive products |
+| P5-3 | `PRODUCT_IMPORT` audit entries had no dedicated formatter | `formatAuditDetails.ts` | **Fixed** — shows file name, audit warehouse, and success/failed counts |
+
+**Validation:** Backend `tsc --noEmit`, backend `npm test` (16/16), frontend `tsc --noEmit`, frontend `npm run lint` all pass.
+
+---
+
+# Sixth audit pass — 30 June 2026 (concurrency, atomicity, list hygiene)
+
+**Scope:** Independent fresh bug hunt across backend services, API contracts, and frontend flows (beyond the documented items). Focus on concurrency/atomicity, date-filter consistency, and catalog/stock list hygiene.
+**Status:** Fixed. Backend `tsc` + `npm test` (19/19), frontend `tsc`, `lint`, and full `build` all pass.
+
+| Severity | # | Issue | Files | Fix |
+|----------|---|-------|-------|-----|
+| Critical | P6-1 | Non-atomic balance updates could oversell on concurrent stock-out/transfer (worse on standalone MongoDB without transactions) | `stock/inventory.service.ts` (`adjustBalance`, `setBalance`) | Decrements use a single guarded atomic `findOneAndUpdate({ quantity: { $gte: -delta } }, { $inc })`; increments use atomic `$inc` upsert; `setBalance` does an atomic absolute `$set` and reads the pre-image for previous/delta |
+| High | P6-2 | Transfer receive checked status then saved — concurrent receives could double-credit the destination | `stock/stock.service.ts` (`receiveTransfer`) | Transfer is now atomically claimed via `findOneAndUpdate({ status: PENDING } → RECEIVED)` **before** crediting stock; loser aborts with a clear error |
+| High | P6-3 | Manual stock-in/out did not reject inactive source warehouses (only transfer destination was checked) | `stock/stock.service.ts` (`stockIn`, `stockOut`) | Both now validate the warehouse `isActive` before adjusting balances |
+| Medium | P6-4 | `/inventory/movements` `dateTo` excluded most of the end day (midnight vs end-of-day used elsewhere) | `inventory/inventory.service.ts` (`listMovementHistory`) | `dateTo` now snaps to end-of-day (`23:59:59.999`), matching transfer history/reports |
+| Medium | P6-5 | Inactive products/brands/warehouses still appeared in inventory + staff balance lists | `inventory/inventory.service.ts` (`fetchStockRows`), `stock/inventory.service.ts` (`listBalances`) | Rows whose product, brand, or warehouse is inactive are filtered out |
+| Medium | P6-6 | Import merge never updated the product **primary** name; could silently target the wrong product on duplicate labels | `imports/productImport.service.ts`, `shared/utils/productLookup.ts` (`findProductByBrandLabelOverlap`) | Merge now updates the primary name (and secondary), and the overlap lookup throws on ambiguous multi-product matches |
+| Low | P6-7 | Stock item detail accepted `sortBy` but always returned `createdAt` order | `inventory/inventory.service.ts` (`getStockItemDetail`) | Ledger is sorted by the requested field **after** running balances are computed on chronological order (balance-per-row stays correct) |
+| Low | P6-8 | Single-product balance lookup returned a fabricated `updatedAt: new Date()` | `stock/stock.service.ts` (`listBalancesForUser`) | Now reads the real `InventoryBalance.updatedAt` (or `null` when no balance row exists) |
+| Low | P6-9 | Client `inventory.movements` typings omitted supported `productId` / `dateFrom` / `dateTo` / `search` params | `frontend/src/lib/api/client.ts` | Added the missing query params to the typed signature |
+
+**New tests:** `productLookup.test.ts` adds overlap-lookup coverage (single match, no match, ambiguous-throws). Backend suite now **19 passing**.
+
+**Validation:** Backend `tsc --noEmit`, backend `npm test` (19/19), frontend `tsc --noEmit`, frontend `npm run lint`, and full `npm run build` all pass.
+
+**Residual (acceptable / future):** True multi-document atomicity still requires a MongoDB **replica set** (the app falls back to non-transactional writes on standalone, now mitigated by atomic single-document operators). Batch product-import is still per-row (no all-or-nothing rollback) — intentional so partial imports surface per-row errors.
+
+---
+
+## Historical findings (original audit — all addressed)
+
+> The sections below document the **original** audit findings from the first pass. Every item is listed in the **Fix status** table at the top as **Fixed** or **ADDRESSED**. They are retained for traceability only — do not treat them as open work.
+
+## Critical (historical)
 
 ### 1. Products API pagination shape is broken
 
@@ -405,7 +449,7 @@ The following items have been **fixed** (builds pass, no lint errors):
 
 | | |
 |---|---|
-| **Files** | `frontend/src/app/(dashboard)/warehouse/*` (removed), `frontend/src/app/(dashboard)/app/*`, `frontend/src/lib/auth/constants.ts`, `frontend/src/middleware.ts` |
+| **Files** | `frontend/src/app/(dashboard)/warehouse/*` (removed), `frontend/src/app/(dashboard)/app/*`, `frontend/src/lib/auth/constants.ts`, `frontend/src/proxy.ts` |
 | **Issue** | Middleware redirects `/warehouse/*` → `/app/*`. The live `/app/*` pages re-exported implementations from `(dashboard)/warehouse/*`; warehouse layout/constants still referenced legacy paths. |
 | **Fix** | Deleted the `(dashboard)/warehouse/` directory. Relocated the in-use implementations (`page`, `inventory/page`, `transfers/page`) into their `(dashboard)/app/*` counterparts and simplified the dashboard to use `/app` routes directly. Removed `AUTH_ROUTES.warehouse*`. Kept the middleware redirect as a safety net for old bookmarks. Frontend production build passes. |
 
@@ -490,14 +534,14 @@ The following items have been **fixed** (builds pass, no lint errors):
 | `/app/receive` | Yes | No | Redirects to `/app/transfer` |
 | `/app/return` | Yes | No | Hidden from nav |
 | `/app/stock` | Yes | No | Nav needs `stock.in` or `stock.out` |
-| `/app/notifications` | **No** | Yes (with `checklists.complete`) | Middleware allows any staff via fallback |
+| `/app/notifications` | Yes | Yes (with `checklists.complete`) | Proxy allows staff with explicit permission |
 
 ---
 
 ## What works correctly
 
 - Backend and frontend TypeScript builds pass
-- `/admin/*` blocked for non-admins via middleware
+- `/admin/*` blocked for non-admins via proxy auth routing
 - Stock in/out warehouse scoping on API
 - Transfer create → receive balance updates
 - Invoice delete restores stock in a transaction
@@ -509,13 +553,15 @@ The following items have been **fixed** (builds pass, no lint errors):
 
 ---
 
-## Recommended fix priority
+## Recommended fix priority (historical)
 
-1. **Products pagination** — `sendSuccess(res, items, 200, { pagination })` in products route
-2. **`/app/inventory` guard** — add `STOCK_VIEW` to `APP_ROUTE_PERMISSIONS`
-3. **Transfer history scoping** — mirror `listPendingTransfers` warehouse filter in `listTransferHistory`
-4. **Middleware fallback** — deny unknown `/app/*` paths; add `/app/notifications` with explicit permission
-5. **Return flow** — allow `transfers.receive` on history API; add `STOCK_IN` to `assertCanReturnTransfer`; filter `ReturnPanel` by warehouse
-6. **Staff routes** — `/app/wrong-invoice` for `inventory.adjust`; fix audit link on `/app/users`
-7. **Pending transfer return** — create stock movements when admin marks pending transfer as returned/cancelled
-8. **UX polish** — `StockQuantityDisplay` on transfer lists; `STOCK_ADJUSTED` audit formatter; permission save validation
+All items below were completed in passes 1–5. See **Fix status** and pass-specific tables above.
+
+1. ~~Products pagination~~ — done
+2. ~~`/app/inventory` guard~~ — done
+3. ~~Transfer history scoping~~ — done
+4. ~~Proxy fallback for `/app/*`~~ — done
+5. ~~Return flow permissions~~ — done
+6. ~~Staff routes for invoice fix and audit links~~ — done
+7. ~~Pending transfer return movements~~ — done
+8. ~~UX polish (transfer display, audit formatters, permission validation)~~ — done
